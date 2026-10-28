@@ -308,10 +308,12 @@ object RoutingAndFareCalculator {
         approximateDeliveryTime: String = "",
         courier: CourierDriver? = null,
         paymentMethod: PaymentMethodType? = null,
-        transferBank: TransferBankType = TransferBankType.BAC
+        transferBank: TransferBankType = TransferBankType.BAC,
+        productAmount: Double = 0.0
     ): String {
         val cur = config.currencySymbol
-        val finalAmount = quote.effectiveTotal
+        val deliveryFee = quote.effectiveTotal
+        val grandTotal = productAmount + deliveryFee
         val sb = StringBuilder()
         sb.appendLine("🛵 *COTIZACIÓN DE ENVÍO - COLORSHOP DELIVERY*")
         if (customerNote.isNotBlank()) {
@@ -338,15 +340,18 @@ object RoutingAndFareCalculator {
         }
         if (paymentMethod != null) {
             val paymentText = when (paymentMethod) {
-                PaymentMethodType.CASH -> "Efectivo"
+                PaymentMethodType.CASH -> "Efectivo al recibir"
                 PaymentMethodType.TRANSFER -> "Transferencia (${transferBank.displayName})"
-                PaymentMethodType.POS -> "POS / Tarjeta"
+                PaymentMethodType.POS -> "POS / Tarjeta al recibir"
             }
             sb.appendLine("💳 *Método de pago:* $paymentText")
         }
         sb.appendLine("────────────────────")
+        if (productAmount > 0.0) {
+            sb.appendLine("🛍️ *Total Productos / Mercadería:* ${formatMoney(productAmount, cur)}")
+        }
         val incText = if (quote.includedKm > 0) " (incluye ${String.format(Locale.US, "%.1f", quote.includedKm)} km)" else ""
-        sb.appendLine("• Tarifa mínima$incText: ${formatMoney(quote.baseMinimumFare, cur)}")
+        sb.appendLine("• Tarifa mínima envío$incText: ${formatMoney(quote.baseMinimumFare, cur)}")
         if (quote.extraKm > 0.01) {
             sb.appendLine(
                 "• Tarifa de distancia (${String.format(Locale.US, "%.2f", quote.extraKm)} km × ${formatMoney(quote.costPerExtraKm, cur)}/km): +${formatMoney(quote.extraDistanceCharge, cur)}"
@@ -365,8 +370,14 @@ object RoutingAndFareCalculator {
             val sign = if (quote.manualExtraAdjustment > 0) "+" else ""
             sb.appendLine("• Cargo adicional: $sign${formatMoney(quote.manualExtraAdjustment, cur)}")
         }
-        sb.appendLine("────────────────────")
-        sb.appendLine("💰 *TOTAL ENVÍO: ${formatMoney(finalAmount, cur)}*")
+        if (productAmount > 0.0) {
+            sb.appendLine("🛵 *Subtotal Envío:* ${formatMoney(deliveryFee, cur)}")
+            sb.appendLine("────────────────────")
+            sb.appendLine("💰 *GRAN TOTAL A PAGAR: ${formatMoney(grandTotal, cur)}*")
+        } else {
+            sb.appendLine("────────────────────")
+            sb.appendLine("💰 *TOTAL ENVÍO: ${formatMoney(deliveryFee, cur)}*")
+        }
         val scheduleSummary = buildScheduleSummaryLine(config)
         if (scheduleSummary.isNotBlank()) {
             sb.append("⏰ *Horarios de atención:* $scheduleSummary")
@@ -375,11 +386,36 @@ object RoutingAndFareCalculator {
     }
 
     /**
+     * Construye la nota explicativa para liquidación de cuentas del conductor.
+     */
+    fun buildDriverSettlementNote(
+        paymentMethod: PaymentMethodType,
+        transferBank: TransferBankType,
+        productAmount: Double,
+        deliveryFee: Double,
+        currencySymbol: String
+    ): String {
+        val cur = currencySymbol
+        val grandTotal = productAmount + deliveryFee
+        return when (paymentMethod) {
+            PaymentMethodType.CASH -> {
+                "💵 Cobro Efectivo: Cobrar ${formatMoney(grandTotal, cur)}. Te descuentas tu envío (${formatMoney(deliveryFee, cur)}). Depositar/liquidar a tienda por mercadería: ${formatMoney(productAmount, cur)} (al final del día o mañana)."
+            }
+            PaymentMethodType.TRANSFER -> {
+                "💳 Transferencia (${transferBank.displayName}): Cliente ya pagó a tienda (Cobro al cliente: ${formatMoney(0.0, cur)}). Tienda ColorShop te pagará tu envío (${formatMoney(deliveryFee, cur)}) hoy mismo o mañana."
+            }
+            PaymentMethodType.POS -> {
+                "💳 POS Tarjeta: Cliente paga con datáfono de la tienda. Tienda ColorShop te pagará tu envío (${formatMoney(deliveryFee, cur)}) hoy mismo o mañana."
+            }
+        }
+    }
+
+    /**
      * Genera el mensaje para el motorizado / repartidor:
      * - Sin salida tienda matriz (solo hay una y ya la conocen).
      * - "Ubicación de entrega:" con el enlace directo de Google Maps.
      * - Sin coordenadas exactas en texto.
-     * - Sin monto de pago (porque el pago se negocia aparte con cada motorizado).
+     * - Detalle de cobro según forma de pago (Efectivo vs. Transferencia/POS) y liquidación de envío y productos.
      */
     fun buildDriverWhatsAppDispatch(
         config: StoreAndPricingConfig,
@@ -388,10 +424,16 @@ object RoutingAndFareCalculator {
         customerNote: String,
         customerPhone: String = "",
         orderComments: String = "",
-        approximateDeliveryTime: String = ""
+        approximateDeliveryTime: String = "",
+        productAmount: Double = 0.0,
+        paymentMethod: PaymentMethodType = PaymentMethodType.CASH,
+        transferBank: TransferBankType = TransferBankType.BAC
     ): String {
+        val cur = config.currencySymbol
+        val deliveryFee = quote.effectiveTotal
+        val grandTotal = productAmount + deliveryFee
         val sb = StringBuilder()
-        sb.appendLine("📦 *ENVÍO - COLORSHOP DELIVERY*")
+        sb.appendLine("📦 *DESPACHO DE ENVÍO - COLORSHOP DELIVERY*")
         if (customerNote.isNotBlank()) {
             sb.appendLine("👤 *Recibe / Cliente:* $customerNote")
         }
@@ -409,7 +451,21 @@ object RoutingAndFareCalculator {
         }
         sb.appendLine("📍 *Ubicación de entrega:*")
         sb.appendLine(destination.coordinate.toStaticGoogleMapsUrl())
-        sb.append("📏 *Distancia:* ${String.format(Locale.US, "%.2f km", quote.effectiveDistanceKm)}")
-        return sb.toString()
+        sb.appendLine("📏 *Distancia:* ${String.format(Locale.US, "%.2f km", quote.effectiveDistanceKm)}")
+        sb.appendLine("────────────────────")
+        sb.appendLine("💰 *CUENTAS Y LIQUIDACIÓN MOTORIZADO:*")
+        if (productAmount > 0.0) {
+            sb.appendLine("• Mercadería / Productos: ${formatMoney(productAmount, cur)}")
+        }
+        sb.appendLine("• Tarifa Servicio Envío: ${formatMoney(deliveryFee, cur)}")
+        if (paymentMethod == PaymentMethodType.CASH) {
+            sb.appendLine("• *Cobro al Cliente (Efectivo):* ${formatMoney(grandTotal, cur)}")
+            sb.appendLine("👉 *Liquidación:* Te descuentas tu envío (${formatMoney(deliveryFee, cur)}). Depositar/liquidar a tienda por mercadería: *${formatMoney(productAmount, cur)}* (al final del día o mañana).")
+        } else {
+            val methodLabel = if (paymentMethod == PaymentMethodType.TRANSFER) "Transferencia ${transferBank.displayName}" else "POS Tarjeta"
+            sb.appendLine("• *Cobro al Cliente:* ${formatMoney(0.0, cur)} (Ya pagado a tienda por $methodLabel)")
+            sb.appendLine("👉 *Liquidación:* La tienda ColorShop te pagará tu envío (*${formatMoney(deliveryFee, cur)}*) hoy mismo o mañana.")
+        }
+        return sb.toString().trimEnd()
     }
 }

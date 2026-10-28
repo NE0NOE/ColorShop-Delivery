@@ -10,6 +10,7 @@ import com.rapiflete.delivery.model.DistanceCalculationMode
 import com.rapiflete.delivery.model.FrozenDestination
 import com.rapiflete.delivery.model.GeoCoordinate
 import com.rapiflete.delivery.model.LocationSourceType
+import com.rapiflete.delivery.model.OrderStatus
 import com.rapiflete.delivery.model.PaymentMethodType
 import com.rapiflete.delivery.model.QuoteBreakdown
 import com.rapiflete.delivery.model.RouteResult
@@ -53,6 +54,8 @@ data class DeliveryUiState(
     val couriers: List<CourierDriver> = emptyList(),
     val selectedCourier: CourierDriver? = null,
     val zones: List<SpecialZoneRule> = emptyList(),
+    val productAmount: Double = 0.0,
+    val productAmountInput: String = "",
     val isLoadingRouteOrLink: Boolean = false,
     val statusBannerMessage: String? = null,
     val errorMessage: String? = null,
@@ -99,6 +102,16 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
         _uiState.update { it.copy(customerPhone = newPhone) }
     }
 
+    fun onProductAmountChanged(newInput: String) {
+        val parsed = newInput.trim().toDoubleOrNull() ?: 0.0
+        _uiState.update {
+            it.copy(
+                productAmountInput = newInput,
+                productAmount = parsed
+            )
+        }
+    }
+
     fun onOrderCommentsChanged(newComments: String) {
         _uiState.update { it.copy(orderComments = newComments) }
     }
@@ -133,6 +146,24 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
         repository.saveCouriers(updated)
         _uiState.update { state ->
             val updatedSelected = updated.find { it.id == state.selectedCourier?.id } ?: updated.firstOrNull()
+            state.copy(
+                couriers = updated,
+                selectedCourier = updatedSelected
+            )
+        }
+    }
+
+    fun updateCourier(courier: CourierDriver) {
+        val updated = _uiState.value.couriers.map {
+            if (it.id == courier.id) courier else it
+        }
+        repository.saveCouriers(updated)
+        _uiState.update { state ->
+            val updatedSelected = if (state.selectedCourier?.id == courier.id) {
+                courier
+            } else {
+                state.selectedCourier ?: updated.firstOrNull()
+            }
             state.copy(
                 couriers = updated,
                 selectedCourier = updatedSelected
@@ -390,14 +421,25 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun saveCurrentQuoteToHistory() {
+    fun saveCurrentQuoteToHistory(): Boolean {
         val state = _uiState.value
-        val dest = state.frozenDestination ?: return
-        val quote = state.quoteBreakdown ?: return
+        val dest = state.frozenDestination ?: return false
+        val quote = state.quoteBreakdown ?: return false
         val courier = state.selectedCourier ?: state.couriers.firstOrNull()
-        val finalAmountToRecord = quote.effectiveTotal
+        val deliveryFee = quote.effectiveTotal
+        val productAmt = state.productAmount
+        val totalAmount = productAmt + deliveryFee
+
+        val settlementNote = RoutingAndFareCalculator.buildDriverSettlementNote(
+            paymentMethod = state.selectedPaymentMethod,
+            transferBank = state.selectedTransferBank,
+            productAmount = productAmt,
+            deliveryFee = deliveryFee,
+            currencySymbol = state.config.currencySymbol
+        )
 
         val surchargesList = mutableListOf<String>()
+        if (productAmt > 0) surchargesList.add("Mercadería: ${state.config.currencySymbol}${productAmt.toInt()}")
         if (quote.offHoursApplied) surchargesList.add("Recargo nocturno")
         if (quote.holidayApplied) surchargesList.add("Día festivo")
         if (quote.rainApplied) surchargesList.add("Lluvia/Demanda")
@@ -418,15 +460,15 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             orderComments = state.orderComments,
             approximateDeliveryTime = state.approximateDeliveryTime,
             receiptPhotoUri = state.receiptPhotoUri,
-            courierName = courier?.name ?: "Marcos Morales",
-            courierInitials = courier?.initials ?: "MM",
+            courierName = courier?.name ?: "Walter",
+            courierInitials = courier?.initials ?: "W",
             courierPhone = courier?.phone ?: "",
             paymentMethod = state.selectedPaymentMethod,
             transferBank = state.selectedTransferBank.displayName,
             paymentDetail = when (state.selectedPaymentMethod) {
-                PaymentMethodType.CASH -> "Total: ${state.config.currencySymbol} ${finalAmountToRecord.toInt()}"
-                PaymentMethodType.TRANSFER -> "Transferencia ${state.selectedTransferBank.displayName}"
-                PaymentMethodType.POS -> "Llevar POS (Tarjeta)"
+                PaymentMethodType.CASH -> "Cobro Efectivo: ${state.config.currencySymbol} ${totalAmount.toInt()}"
+                PaymentMethodType.TRANSFER -> "Transf. ${state.selectedTransferBank.displayName} (${state.config.currencySymbol} ${totalAmount.toInt()})"
+                PaymentMethodType.POS -> "POS Tarjeta (${state.config.currencySymbol} ${totalAmount.toInt()})"
             },
             receiptId = "#CS-${(10000..99999).random()}",
             destinationLat = dest.coordinate.latitude,
@@ -437,8 +479,12 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             durationMinutes = (quote.durationMinutes?.roundToInt() ?: 14).coerceAtLeast(1),
             modeLabel = quote.usedMode.shortLabel,
             surchargesSummary = if (surchargesList.isEmpty()) "Entrega estándar a domicilio" else surchargesList.joinToString(" · "),
-            totalAmount = finalAmountToRecord,
-            currencySymbol = state.config.currencySymbol
+            productAmount = productAmt,
+            deliveryFee = deliveryFee,
+            totalAmount = totalAmount,
+            currencySymbol = state.config.currencySymbol,
+            orderStatus = OrderStatus.EN_RUTA,
+            driverSettlementNote = settlementNote
         )
 
         val updatedHistory = listOf(record) + state.history
@@ -449,6 +495,15 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
                 statusBannerMessage = null
             )
         }
+        return true
+    }
+
+    fun updateOrderStatus(recordId: String, newStatus: OrderStatus) {
+        val updated = _uiState.value.history.map {
+            if (it.id == recordId) it.copy(orderStatus = newStatus) else it
+        }
+        repository.saveHistory(updated)
+        _uiState.update { it.copy(history = updated) }
     }
 
     fun loadRecordFromHistory(record: SavedQuoteRecord) {

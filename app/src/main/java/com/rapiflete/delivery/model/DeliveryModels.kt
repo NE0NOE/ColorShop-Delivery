@@ -59,6 +59,12 @@ enum class CourierStatus(val label: String) {
     OFF_DUTY("Fuera de Turno")
 }
 
+enum class OrderStatus(val label: String, val emoji: String) {
+    EN_RUTA("En Ruta", "🛵"),
+    ENTREGADO("Entregado", "✅"),
+    CANCELADO("Cancelado", "❌")
+}
+
 enum class PaymentMethodType(val label: String, val badgeLabel: String) {
     CASH("Efectivo", "Cobro Efectivo"),
     TRANSFER("Transferencia", "Transferencia Bancaria"),
@@ -199,8 +205,8 @@ data class SavedQuoteRecord(
     val orderComments: String = "",
     val approximateDeliveryTime: String = "",
     val receiptPhotoUri: String = "",
-    val courierName: String = "Marcos Morales",
-    val courierInitials: String = "MM",
+    val courierName: String = "Walter",
+    val courierInitials: String = "W",
     val courierPhone: String = "",
     val paymentMethod: PaymentMethodType = PaymentMethodType.CASH,
     val transferBank: String = "BAC",
@@ -214,6 +220,10 @@ data class SavedQuoteRecord(
     val durationMinutes: Int = 14,
     val modeLabel: String,
     val surchargesSummary: String,
+    val productAmount: Double = 0.0,
+    val deliveryFee: Double = 0.0,
     val totalAmount: Double,
-    val currencySymbol: String
+    val currencySymbol: String,
+    val orderStatus: OrderStatus = OrderStatus.EN_RUTA,
+    val driverSettlementNote: String = ""
 )

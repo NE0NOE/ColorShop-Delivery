@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HowToReg
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.PersonAdd
@@ -77,6 +78,7 @@ fun CouriersScreen(
     couriers: List<CourierDriver>,
     onAddCourier: (String, String, String, String, String, String, Boolean, Boolean) -> Unit,
     onUpdateCourierVisibility: (String, Boolean, Boolean) -> Unit,
+    onUpdateCourier: (CourierDriver) -> Unit = {},
     onDeleteCourier: (String) -> Unit = {},
     onBack: () -> Unit
 ) {
@@ -95,6 +97,7 @@ fun CouriersScreen(
     var searchQuery by remember { mutableStateOf("") }
     var statusFilter by remember { mutableStateOf<CourierStatus?>(null) }
     var courierToDelete by remember { mutableStateOf<CourierDriver?>(null) }
+    var courierToEdit by remember { mutableStateOf<CourierDriver?>(null) }
 
     val filteredCouriers = remember(couriers, searchQuery, statusFilter) {
         couriers.filter { c ->
@@ -585,9 +588,137 @@ fun CouriersScreen(
                     onToggleIncludePhone = { checked ->
                         onUpdateCourierVisibility(courier.id, courier.includeNameInCustomerMessage, checked)
                     },
+                    onEditRequest = {
+                        courierToEdit = courier
+                    },
                     onDeleteRequest = {
                         courierToDelete = courier
                     }
+                )
+            }
+
+            if (courierToEdit != null) {
+                val currentEditing = courierToEdit!!
+                var editName by remember(currentEditing) { mutableStateOf(currentEditing.name) }
+                var editPhone by remember(currentEditing) { mutableStateOf(currentEditing.phone) }
+                var editPlate by remember(currentEditing) { mutableStateOf(currentEditing.plate) }
+                var editVehicle by remember(currentEditing) { mutableStateOf(currentEditing.vehicleModel) }
+                var editDocId by remember(currentEditing) { mutableStateOf(currentEditing.documentId) }
+                var editShift by remember(currentEditing) { mutableStateOf(currentEditing.shift) }
+                var editIncludeName by remember(currentEditing) { mutableStateOf(currentEditing.includeNameInCustomerMessage) }
+                var editIncludePhone by remember(currentEditing) { mutableStateOf(currentEditing.includePhoneInCustomerMessage) }
+
+                AlertDialog(
+                    onDismissRequest = { courierToEdit = null },
+                    title = {
+                        Text(
+                            text = "Editar Repartidor",
+                            fontWeight = FontWeight.ExtraBold,
+                            color = ColorShopDeepPlum
+                        )
+                    },
+                    text = {
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.verticalScroll(rememberScrollState())
+                        ) {
+                            OutlinedTextField(
+                                value = editName,
+                                onValueChange = { editName = it },
+                                label = { Text("Nombre Completo") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editPhone,
+                                onValueChange = { editPhone = it },
+                                label = { Text("Teléfono") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editPlate,
+                                onValueChange = { editPlate = it },
+                                label = { Text("Placa") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editVehicle,
+                                onValueChange = { editVehicle = it },
+                                label = { Text("Vehículo / Modelo") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            OutlinedTextField(
+                                value = editDocId,
+                                onValueChange = { editDocId = it },
+                                label = { Text("Cédula / Documento") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { editIncludeName = !editIncludeName }
+                            ) {
+                                Checkbox(
+                                    checked = editIncludeName,
+                                    onCheckedChange = { editIncludeName = it },
+                                    colors = CheckboxDefaults.colors(checkedColor = ColorShopPrimary)
+                                )
+                                Text("Incluir nombre en mensaje", fontSize = 12.sp)
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.clickable { editIncludePhone = !editIncludePhone }
+                            ) {
+                                Checkbox(
+                                    checked = editIncludePhone,
+                                    onCheckedChange = { editIncludePhone = it },
+                                    colors = CheckboxDefaults.colors(checkedColor = ColorShopPrimary)
+                                )
+                                Text("Incluir teléfono en mensaje", fontSize = 12.sp)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                val cleanName = editName.trim().ifBlank { currentEditing.name }
+                                val words = cleanName.split(" ").filter { it.isNotBlank() }
+                                val initials = if (words.size >= 2) {
+                                    "${words[0].first().uppercaseChar()}${words[1].first().uppercaseChar()}"
+                                } else {
+                                    cleanName.take(2).uppercase(java.util.Locale.getDefault())
+                                }
+                                val updated = currentEditing.copy(
+                                    name = cleanName,
+                                    initials = initials,
+                                    phone = editPhone.trim(),
+                                    plate = editPlate.trim().uppercase(java.util.Locale.getDefault()),
+                                    vehicleModel = editVehicle.trim(),
+                                    vehicleType = editVehicle.trim(),
+                                    documentId = editDocId.trim(),
+                                    shift = editShift.trim(),
+                                    includeNameInCustomerMessage = editIncludeName,
+                                    includePhoneInCustomerMessage = editIncludePhone
+                                )
+                                onUpdateCourier(updated)
+                                Toast.makeText(context, "Repartidor \"$cleanName\" actualizado", Toast.LENGTH_SHORT).show()
+                                courierToEdit = null
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary)
+                        ) {
+                            Text("Guardar Cambios", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    dismissButton = {
+                        OutlinedButton(onClick = { courierToEdit = null }) {
+                            Text("Cancelar", color = ColorShopDeepPlum)
+                        }
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    containerColor = Color.White
                 )
             }
 
@@ -708,6 +839,7 @@ private fun CourierDirectoryCard(
     courier: CourierDriver,
     onToggleIncludeName: (Boolean) -> Unit,
     onToggleIncludePhone: (Boolean) -> Unit,
+    onEditRequest: () -> Unit = {},
     onDeleteRequest: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -922,6 +1054,24 @@ private fun CourierDirectoryCard(
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.Chat,
                                     contentDescription = "WhatsApp",
+                                    tint = ColorShopPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            color = ColorShopSurfaceLow,
+                            shape = CircleShape,
+                            shadowElevation = 2.dp,
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clickable { onEditRequest() }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Editar repartidor",
                                     tint = ColorShopPrimary,
                                     modifier = Modifier.size(16.dp)
                                 )

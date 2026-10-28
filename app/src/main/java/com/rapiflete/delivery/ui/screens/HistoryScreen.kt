@@ -80,6 +80,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.rapiflete.delivery.model.CourierDriver
 import com.rapiflete.delivery.model.GeoCoordinate
+import com.rapiflete.delivery.model.OrderStatus
 import com.rapiflete.delivery.model.PaymentMethodType
 import com.rapiflete.delivery.model.SavedQuoteRecord
 import com.rapiflete.delivery.ui.components.ColorShopTopBar
@@ -105,6 +106,7 @@ fun HistoryScreen(
     currencySymbol: String,
     onSelectRecord: (SavedQuoteRecord) -> Unit,
     onDeleteRecord: (String) -> Unit,
+    onUpdateOrderStatus: (String, OrderStatus) -> Unit = { _, _ -> },
     onClearAll: () -> Unit
 ) {
     val context = LocalContext.current
@@ -118,6 +120,7 @@ fun HistoryScreen(
 
     var selectedPaymentFilter by remember { mutableStateOf("ALL") } // ALL, CASH, TRANSFER
     var selectedCourierName by remember { mutableStateOf<String?>(null) }
+    var selectedStatusFilter by remember { mutableStateOf<OrderStatus?>(null) }
 
     // Filtrar estrictamente por la fecha seleccionada para no acarrear datos de días pasados
     val recordsForSelectedDate = remember(records, selectedDateIso) {
@@ -133,7 +136,7 @@ fun HistoryScreen(
             .sortedDescending()
     }
 
-    val filteredRecords = remember(recordsForSelectedDate, selectedPaymentFilter, selectedCourierName) {
+    val filteredRecords = remember(recordsForSelectedDate, selectedPaymentFilter, selectedCourierName, selectedStatusFilter) {
         recordsForSelectedDate.filter { rec ->
             val matchesPayment = when (selectedPaymentFilter) {
                 "CASH" -> rec.paymentMethod == PaymentMethodType.CASH
@@ -142,7 +145,8 @@ fun HistoryScreen(
             }
             val matchesCourier = selectedCourierName == null ||
                 rec.courierName.equals(selectedCourierName, ignoreCase = true)
-            matchesPayment && matchesCourier
+            val matchesStatus = selectedStatusFilter == null || rec.orderStatus == selectedStatusFilter
+            matchesPayment && matchesCourier && matchesStatus
         }
     }
 
@@ -676,7 +680,7 @@ fun HistoryScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
-        // Filas Horizontales de Chips de Filtro (Método de cobro y Repartidores)
+        // Filas Horizontales de Chips de Filtro (Estado del Pedido, Método de cobro y Repartidores)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -685,7 +689,31 @@ fun HistoryScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             HistoryFilterPill(
-                label = "Todos (${recordsForSelectedDate.size})",
+                label = "Todos Estados (${recordsForSelectedDate.size})",
+                selected = selectedStatusFilter == null,
+                onClick = { selectedStatusFilter = null }
+            )
+            OrderStatus.entries.forEach { st ->
+                val count = recordsForSelectedDate.count { it.orderStatus == st }
+                HistoryFilterPill(
+                    label = "${st.emoji} ${st.label} ($count)",
+                    selected = selectedStatusFilter == st,
+                    onClick = { selectedStatusFilter = st }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            HistoryFilterPill(
+                label = "Todos Pagos",
                 selected = selectedPaymentFilter == "ALL",
                 onClick = { selectedPaymentFilter = "ALL" }
             )
@@ -804,6 +832,7 @@ fun HistoryScreen(
                     TimelineHistoryItem(
                         record = record,
                         onSelectInMap = { onSelectRecord(record) },
+                        onUpdateStatus = { newStatus -> onUpdateOrderStatus(record.id, newStatus) },
                         onDelete = { onDeleteRecord(record.id) }
                     )
                 }
@@ -846,6 +875,7 @@ private fun HistoryFilterPill(
 private fun TimelineHistoryItem(
     record: SavedQuoteRecord,
     onSelectInMap: () -> Unit,
+    onUpdateStatus: (OrderStatus) -> Unit = {},
     onDelete: () -> Unit
 ) {
     val context = LocalContext.current
@@ -935,9 +965,17 @@ private fun TimelineHistoryItem(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Default.CheckCircle,
+                    imageVector = when (record.orderStatus) {
+                        OrderStatus.EN_RUTA -> Icons.AutoMirrored.Filled.DirectionsBike
+                        OrderStatus.ENTREGADO -> Icons.Default.CheckCircle
+                        OrderStatus.CANCELADO -> Icons.Default.Close
+                    },
                     contentDescription = null,
-                    tint = ColorShopPrimary,
+                    tint = when (record.orderStatus) {
+                        OrderStatus.EN_RUTA -> Color(0xFFE65100)
+                        OrderStatus.ENTREGADO -> Color(0xFF2E7D32)
+                        OrderStatus.CANCELADO -> Color(0xFFC62828)
+                    },
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -976,7 +1014,112 @@ private fun TimelineHistoryItem(
                 modifier = Modifier.padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Fila superior: Repartidor | Tarifa Delivery
+                // FILA 1: Estado del Pedido (Pill) y Botones de Cambio de Estado
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    val statusBg = when (record.orderStatus) {
+                        OrderStatus.EN_RUTA -> Color(0xFFFFF3E0)
+                        OrderStatus.ENTREGADO -> Color(0xFFE8F5E9)
+                        OrderStatus.CANCELADO -> Color(0xFFFFEBEE)
+                    }
+                    val statusFg = when (record.orderStatus) {
+                        OrderStatus.EN_RUTA -> Color(0xFFE65100)
+                        OrderStatus.ENTREGADO -> Color(0xFF2E7D32)
+                        OrderStatus.CANCELADO -> Color(0xFFC62828)
+                    }
+
+                    Surface(
+                        color = statusBg,
+                        shape = RoundedCornerShape(50),
+                        modifier = Modifier.border(1.dp, statusFg.copy(alpha = 0.4f), RoundedCornerShape(50))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(record.orderStatus.emoji, fontSize = 11.sp)
+                            Text(
+                                text = record.orderStatus.label,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = statusFg
+                            )
+                        }
+                    }
+
+                    // Acciones rápidas de cambio de estado
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        when (record.orderStatus) {
+                            OrderStatus.EN_RUTA -> {
+                                Surface(
+                                    color = Color(0xFFE8F5E9),
+                                    shape = RoundedCornerShape(50),
+                                    modifier = Modifier.clickable { onUpdateStatus(OrderStatus.ENTREGADO) }
+                                ) {
+                                    Text(
+                                        text = "Entregado ✅",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF2E7D32),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                                Surface(
+                                    color = Color(0xFFFFEBEE),
+                                    shape = RoundedCornerShape(50),
+                                    modifier = Modifier.clickable { onUpdateStatus(OrderStatus.CANCELADO) }
+                                ) {
+                                    Text(
+                                        text = "Cancelar ❌",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFC62828),
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            OrderStatus.ENTREGADO -> {
+                                Surface(
+                                    color = ColorShopSurfaceLow,
+                                    shape = RoundedCornerShape(50),
+                                    modifier = Modifier.clickable { onUpdateStatus(OrderStatus.EN_RUTA) }
+                                ) {
+                                    Text(
+                                        text = "Reabrir 🛵",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopPrimary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            OrderStatus.CANCELADO -> {
+                                Surface(
+                                    color = ColorShopSurfaceLow,
+                                    shape = RoundedCornerShape(50),
+                                    modifier = Modifier.clickable { onUpdateStatus(OrderStatus.EN_RUTA) }
+                                ) {
+                                    Text(
+                                        text = "Reactivar 🛵",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopPrimary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Fila superior: Repartidor | Tarifa y Totales
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1009,17 +1152,56 @@ private fun TimelineHistoryItem(
                     }
 
                     Column(horizontalAlignment = Alignment.End) {
+                        if (record.productAmount > 0.0) {
+                            Text(
+                                text = "Gran Total",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = ColorShopMutedPlum
+                            )
+                            Text(
+                                text = String.format(Locale.US, "%s %.2f", record.currencySymbol, record.totalAmount),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopPrimary
+                            )
+                            Text(
+                                text = "Prod: ${record.currencySymbol}${record.productAmount.toInt()} + Env: ${record.currencySymbol}${record.deliveryFee.toInt()}",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopMutedPlum
+                            )
+                        } else {
+                            Text(
+                                text = "Tarifa Delivery",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = ColorShopMutedPlum
+                            )
+                            Text(
+                                text = String.format(Locale.US, "%s %.2f", record.currencySymbol, record.totalAmount),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopPrimary
+                            )
+                        }
+                    }
+                }
+
+                // Detalle de Liquidación / Cuentas del Conductor (si existe)
+                if (record.driverSettlementNote.isNotBlank()) {
+                    Surface(
+                        color = ColorShopSurfaceLow.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, ColorShopPrimary.copy(alpha = 0.15f), RoundedCornerShape(10.dp))
+                    ) {
                         Text(
-                            text = "Tarifa Delivery",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = ColorShopMutedPlum
-                        )
-                        Text(
-                            text = String.format(Locale.US, "%s %.2f", record.currencySymbol, record.totalAmount),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = ColorShopPrimary
+                            text = record.driverSettlementNote,
+                            fontSize = 10.sp,
+                            color = ColorShopDeepPlum,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
                         )
                     }
                 }

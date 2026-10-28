@@ -88,6 +88,7 @@ class MainActivity : ComponentActivity() {
                                 onInputChanged = viewModel::onInputTextChanged,
                                 onCustomerNoteChanged = viewModel::onCustomerNoteChanged,
                                 onCustomerPhoneChanged = viewModel::onCustomerPhoneChanged,
+                                onProductAmountChanged = viewModel::onProductAmountChanged,
                                 onOrderCommentsChanged = viewModel::onOrderCommentsChanged,
                                 onApproximateDeliveryTimeChanged = viewModel::onApproximateDeliveryTimeChanged,
                                 onReceiptPhotoSelected = viewModel::onReceiptPhotoSelected,
@@ -124,6 +125,7 @@ class MainActivity : ComponentActivity() {
                                     currentTab = 0
                                 },
                                 onDeleteRecord = viewModel::deleteHistoryRecord,
+                                onUpdateOrderStatus = viewModel::updateOrderStatus,
                                 onClearAll = viewModel::clearAllHistory
                             )
                             2 -> SettingsScreen(
@@ -149,6 +151,7 @@ class MainActivity : ComponentActivity() {
                                 couriers = uiState.couriers,
                                 onAddCourier = viewModel::addCourier,
                                 onUpdateCourierVisibility = viewModel::updateCourierVisibilityFlags,
+                                onUpdateCourier = viewModel::updateCourier,
                                 onDeleteCourier = viewModel::deleteCourier,
                                 onBack = { currentTab = 2 }
                             )

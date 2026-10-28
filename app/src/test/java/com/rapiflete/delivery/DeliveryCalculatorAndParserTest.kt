@@ -104,7 +104,7 @@ class DeliveryCalculatorAndParserTest {
         assertTrue(customerMsg.contains("📏 *Distancia:* 6.20 km"))
         assertTrue(!customerMsg.contains("Ruta Calles"))
         assertTrue(!customerMsg.contains("Tiempo est"))
-        assertTrue(customerMsg.contains("• Tarifa mínima (incluye 2.0 km): C$ 60"))
+        assertTrue(customerMsg.contains("• Tarifa mínima envío (incluye 2.0 km): C$ 60"))
         assertTrue(customerMsg.contains("• Tarifa de distancia (4.20 km × C$ 15/km): +C$ 63"))
         assertTrue(customerMsg.contains("💰 *TOTAL ENVÍO: C$ 135*"))
 

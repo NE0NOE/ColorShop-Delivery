@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.rapiflete.delivery.model.CourierDriver
 import com.rapiflete.delivery.model.CourierStatus
 import com.rapiflete.delivery.model.DistanceCalculationMode
+import com.rapiflete.delivery.model.OrderStatus
 import com.rapiflete.delivery.model.PaymentMethodType
 import com.rapiflete.delivery.model.RoundingMode
 import com.rapiflete.delivery.model.SavedQuoteRecord
@@ -122,7 +123,13 @@ class PreferencesRepository(context: Context) {
                     )
                 )
             }
-            if (list.isEmpty()) defaultCouriers() else list
+            // Eliminar repartidores de prueba antiguos y dejar únicamente repartidores reales o Walter por defecto
+            val cleaned = list.filterNot { c ->
+                c.name.equals("Marcos Morales", ignoreCase = true) ||
+                c.name.equals("Carlos Mendoza", ignoreCase = true) ||
+                c.name.equals("Javier Peña", ignoreCase = true)
+            }
+            if (cleaned.isEmpty()) defaultCouriers() else cleaned
         } catch (_: Exception) {
             defaultCouriers()
         }
@@ -211,8 +218,8 @@ class PreferencesRepository(context: Context) {
                         orderComments = obj.optString("orderComments", ""),
                         approximateDeliveryTime = obj.optString("approximateDeliveryTime", ""),
                         receiptPhotoUri = obj.optString("receiptPhotoUri", ""),
-                        courierName = obj.optString("courierName", "Marcos Morales"),
-                        courierInitials = obj.optString("courierInitials", "MM"),
+                        courierName = obj.optString("courierName", "Walter"),
+                        courierInitials = obj.optString("courierInitials", "W"),
                         courierPhone = obj.optString("courierPhone", ""),
                         paymentMethod = runCatching { PaymentMethodType.valueOf(obj.optString("paymentMethod")) }.getOrDefault(PaymentMethodType.CASH),
                         transferBank = obj.optString("transferBank", "BAC"),
@@ -226,8 +233,12 @@ class PreferencesRepository(context: Context) {
                         durationMinutes = obj.optInt("durationMinutes", 14),
                         modeLabel = obj.optString("modeLabel"),
                         surchargesSummary = obj.optString("surchargesSummary"),
+                        productAmount = obj.optDouble("productAmount", 0.0),
+                        deliveryFee = obj.optDouble("deliveryFee", obj.optDouble("totalAmount", 0.0)),
                         totalAmount = obj.optDouble("totalAmount"),
-                        currencySymbol = obj.optString("currencySymbol", "C$")
+                        currencySymbol = obj.optString("currencySymbol", "C$"),
+                        orderStatus = runCatching { OrderStatus.valueOf(obj.optString("orderStatus")) }.getOrDefault(OrderStatus.EN_RUTA),
+                        driverSettlementNote = obj.optString("driverSettlementNote", "")
                     )
                 )
             }
@@ -264,8 +275,12 @@ class PreferencesRepository(context: Context) {
                 put("durationMinutes", record.durationMinutes)
                 put("modeLabel", record.modeLabel)
                 put("surchargesSummary", record.surchargesSummary)
+                put("productAmount", record.productAmount)
+                put("deliveryFee", record.deliveryFee)
                 put("totalAmount", record.totalAmount)
                 put("currencySymbol", record.currencySymbol)
+                put("orderStatus", record.orderStatus.name)
+                put("driverSettlementNote", record.driverSettlementNote)
             }
             arr.put(obj)
         }
@@ -274,49 +289,19 @@ class PreferencesRepository(context: Context) {
 
     private fun defaultCouriers(): List<CourierDriver> = listOf(
         CourierDriver(
-            id = "c1",
-            name = "Marcos Morales",
-            initials = "MM",
-            badgeTag = "Senior",
+            id = "c_walter",
+            name = "Walter",
+            initials = "W",
+            badgeTag = "Motorizado",
             vehicleType = "Motocicleta",
-            vehicleModel = "Suzuki GN 125",
-            plate = "M-28491",
-            phone = "8823-4567",
-            documentId = "001-290492-0044K",
-            shift = "Mañana (8a-4p)",
-            rating = 4.9,
-            status = CourierStatus.ON_ROUTE,
-            statusDetail = "En ruta • Pedido #1042"
-        ),
-        CourierDriver(
-            id = "c2",
-            name = "Carlos Mendoza",
-            initials = "CM",
-            badgeTag = "Tienda",
-            vehicleType = "Motocicleta",
-            vehicleModel = "Pulsar NS 200",
-            plate = "M-10492",
-            phone = "8432-1100",
-            documentId = "001-140895-0012A",
+            vehicleModel = "Moto 125cc",
+            plate = "M-10294",
+            phone = "8888-8888",
+            documentId = "",
             shift = "Completo",
             rating = 5.0,
             status = CourierStatus.AVAILABLE,
-            statusDetail = "Disponible en tienda matriz"
-        ),
-        CourierDriver(
-            id = "c3",
-            name = "Javier Peña",
-            initials = "JP",
-            badgeTag = "Urbano",
-            vehicleType = "Motocicleta",
-            vehicleModel = "Yamaha YBR",
-            plate = "M-39210",
-            phone = "7654-9988",
-            documentId = "001-031198-0088M",
-            shift = "Tarde/Noche",
-            rating = 4.8,
-            status = CourierStatus.AVAILABLE,
-            statusDetail = "Disponible para despacho"
+            statusDetail = "Disponible para entregas"
         )
     )
 

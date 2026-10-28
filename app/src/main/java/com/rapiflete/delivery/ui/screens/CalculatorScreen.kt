@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -13,6 +14,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +45,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CompassCalibration
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.Person
@@ -121,6 +124,7 @@ fun CalculatorScreen(
     onInputChanged: (String) -> Unit,
     onCustomerNoteChanged: (String) -> Unit,
     onCustomerPhoneChanged: (String) -> Unit,
+    onProductAmountChanged: (String) -> Unit = {},
     onOrderCommentsChanged: (String) -> Unit,
     onApproximateDeliveryTimeChanged: (String) -> Unit,
     onReceiptPhotoSelected: (String) -> Unit,
@@ -148,7 +152,7 @@ fun CalculatorScreen(
     var showSearchBarOverlay by remember { mutableStateOf(false) }
     var showAjustesBottomSheet by remember { mutableStateOf(false) }
     var showEditPriceDialog by remember { mutableStateOf(false) }
-    var showOrderDetailsExpanded by remember { mutableStateOf(false) }
+    var showOrderDetailsExpanded by remember { mutableStateOf(true) }
     var zoomTrigger by remember { mutableIntStateOf(0) }
     var resetNorthTrigger by remember { mutableIntStateOf(0) }
 
@@ -588,6 +592,82 @@ fun CalculatorScreen(
                             }
                         }
                     }
+
+                    // Desglose de Productos y Envío por separado + Gran Total
+                    if (uiState.productAmount > 0.0) {
+                        Surface(
+                            color = ColorShopSurfaceLow.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("🛍️ Mercadería / Productos:", fontSize = 11.sp, color = ColorShopMutedPlum)
+                                    Text(
+                                        "$cur ${String.format(Locale.US, "%.2f", uiState.productAmount)}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopDeepPlum
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("🛵 Tarifa de Envío:", fontSize = 11.sp, color = ColorShopMutedPlum)
+                                    Text(
+                                        "$cur ${String.format(Locale.US, "%.2f", quote.effectiveTotal)}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopPrimary
+                                    )
+                                }
+                                HorizontalDivider(color = ColorShopSurfaceHigh)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text("💰 GRAN TOTAL A PAGAR:", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = ColorShopDeepPlum)
+                                    Text(
+                                        "$cur ${String.format(Locale.US, "%.2f", uiState.productAmount + quote.effectiveTotal)}",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = ColorShopPrimary
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Resumen de liquidación para el conductor según método de pago
+                    val settlementPreview = RoutingAndFareCalculator.buildDriverSettlementNote(
+                        paymentMethod = uiState.selectedPaymentMethod,
+                        transferBank = uiState.selectedTransferBank,
+                        productAmount = uiState.productAmount,
+                        deliveryFee = quote.effectiveTotal,
+                        currencySymbol = cur
+                    )
+                    Surface(
+                        color = ColorShopSurfaceLow.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, ColorShopPrimary.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                    ) {
+                        Text(
+                            text = settlementPreview,
+                            fontSize = 10.sp,
+                            color = ColorShopDeepPlum,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                        )
+                    }
                 } else {
                     // Estado inicial limpio (sin cliente de destino predefinido)
                     Row(
@@ -776,6 +856,27 @@ fun CalculatorScreen(
                                     )
                                 }
 
+                                // Total de Productos / Mercadería por separado
+                                OutlinedTextField(
+                                    value = uiState.productAmountInput,
+                                    onValueChange = onProductAmountChanged,
+                                    label = { Text("Total Productos / Mercadería ($cur)", fontSize = 11.sp) },
+                                    placeholder = { Text("Ej. 450", fontSize = 12.sp) },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Inventory2, contentDescription = null, tint = ColorShopPrimary, modifier = Modifier.size(17.dp))
+                                    },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ColorShopPrimary,
+                                        unfocusedBorderColor = ColorShopSurfaceHigh,
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    ),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
                                 // Comentarios del pedido
                                 OutlinedTextField(
                                     value = uiState.orderComments,
@@ -858,6 +959,72 @@ fun CalculatorScreen(
                     }
                 }
 
+                // Selector Rápido de Motorizado sobre los botones de acción
+                Surface(
+                    color = Color.White,
+                    shape = RoundedCornerShape(18.dp),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(18.dp))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.DirectionsBike,
+                                    contentDescription = null,
+                                    tint = ColorShopPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
+                                    text = "Motorizado asignado:",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ColorShopDeepPlum
+                                )
+                            }
+                            Text(
+                                text = uiState.selectedCourier?.name ?: "Sin asignar",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopPrimary
+                            )
+                        }
+
+                        // Lista horizontal de chips con los repartidores registrados
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            uiState.couriers.forEach { courier ->
+                                val isSelected = uiState.selectedCourier?.id == courier.id
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { onSelectCourier(courier) },
+                                    label = { Text("🛵 ${courier.name}") },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ColorShopPrimary,
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Botones Gemelos de Acción (Cliente | Delivery)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -878,7 +1045,8 @@ fun CalculatorScreen(
                                     approximateDeliveryTime = uiState.approximateDeliveryTime,
                                     courier = uiState.selectedCourier,
                                     paymentMethod = uiState.selectedPaymentMethod,
-                                    transferBank = uiState.selectedTransferBank
+                                    transferBank = uiState.selectedTransferBank,
+                                    productAmount = uiState.productAmount
                                 )
                                 copyToClipboard(context, "Cotización ColorShop", summary)
                                 shareTextToWhatsAppOrChooser(context, summary)
@@ -919,6 +1087,7 @@ fun CalculatorScreen(
                         onClick = {
                             if (quote != null && dest != null) {
                                 onSaveToHistory()
+                                Toast.makeText(context, "✅ Pedido guardado en historial (En Ruta)", Toast.LENGTH_SHORT).show()
                                 val dispatchText = RoutingAndFareCalculator.buildDriverWhatsAppDispatch(
                                     config = cfg,
                                     destination = dest,
@@ -926,7 +1095,10 @@ fun CalculatorScreen(
                                     customerNote = uiState.customerNote,
                                     customerPhone = uiState.customerPhone,
                                     orderComments = uiState.orderComments,
-                                    approximateDeliveryTime = uiState.approximateDeliveryTime
+                                    approximateDeliveryTime = uiState.approximateDeliveryTime,
+                                    productAmount = uiState.productAmount,
+                                    paymentMethod = uiState.selectedPaymentMethod,
+                                    transferBank = uiState.selectedTransferBank
                                 )
                                 copyToClipboard(context, "Despacho ColorShop", dispatchText)
                                 shareTextToWhatsAppOrChooser(context, dispatchText)
@@ -1290,7 +1462,12 @@ private fun shareTextToWhatsAppOrChooser(context: Context, text: String) {
     val sendIntent = Intent(Intent.ACTION_SEND).apply {
         type = "text/plain"
         putExtra(Intent.EXTRA_TEXT, text)
+        // Permite que la app externa (WhatsApp) abra en su propia tarea separada
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        addFlags(Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
     }
-    val chooser = Intent.createChooser(sendIntent, "Compartir con ColorShop Delivery")
+    val chooser = Intent.createChooser(sendIntent, "Compartir con ColorShop Delivery").apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
     context.startActivity(chooser)
 }

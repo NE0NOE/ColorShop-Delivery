@@ -18,7 +18,9 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.rapiflete.delivery"
+            android:documentLaunchMode="intoExisting"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.RapiFlete">
 
