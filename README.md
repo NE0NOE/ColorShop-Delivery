@@ -13,6 +13,11 @@ Aplicación móvil nativa para Android (**Kotlin + Jetpack Compose + OpenStreetM
 
 ### 2. Cotización Editable y Datos Completos del Pedido 📦
 - **Tarifa mínima + kilómetros adicionales** calculados por ruta real en calles (OSRM) o línea recta ajustada.
+- **Tarifa Preferencial Automática por Umbral de Distancia ⭐**:
+  - Detección automática cuando una ruta excede el umbral razonable de costo (por defecto > C$ 150).
+  - Pop-up sugerido para aplicar una tarifa preferencial reducida (ej. reduce de C$ 175 a C$ 150 con -C$ 25 de ahorro / 15% de reducción) para evitar que el cliente desista del envío.
+  - Opciones de ajuste personalizado, presets rápidos y control en Configuración para activar/desactivar y definir el umbral y porcentaje.
+  - Reflejo automático en WhatsApp como descuento de tarifa preferencial para mayor transparencia y satisfacción del cliente.
 - **Precio final editable**: Permite acordar un monto personalizado para facturación manteniendo el estimado original como referencia.
 - **Datos del Cliente, Entrega y Foto**:
   - Nombre del cliente / persona que recibe.

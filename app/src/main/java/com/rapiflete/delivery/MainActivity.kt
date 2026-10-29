@@ -114,7 +114,10 @@ class MainActivity : ComponentActivity() {
                                 onSelectPaymentMethod = viewModel::selectPaymentMethod,
                                 onSelectTransferBank = viewModel::selectTransferBank,
                                 onSaveToHistory = viewModel::saveCurrentQuoteToHistory,
-                                onOpenSettings = { currentTab = 2 }
+                                onOpenSettings = { currentTab = 2 },
+                                onApplyPreferentialRate = viewModel::applyPreferentialRate,
+                                onDismissPreferentialDialog = viewModel::dismissPreferentialRateDialog,
+                                onOpenPreferentialDialog = viewModel::openPreferentialRateDialog
                             )
                             1 -> HistoryScreen(
                                 records = uiState.history,

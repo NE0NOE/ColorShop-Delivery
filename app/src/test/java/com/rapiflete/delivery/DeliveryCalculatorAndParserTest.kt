@@ -241,4 +241,94 @@ class DeliveryCalculatorAndParserTest {
         val configImage = configDefault.copy(defaultShareFormat = com.rapiflete.delivery.model.ShareOutputFormat.IMAGE_RECEIPT)
         assertEquals(com.rapiflete.delivery.model.ShareOutputFormat.IMAGE_RECEIPT, configImage.defaultShareFormat)
     }
+
+    @Test
+    fun `preferential fare calculation accurately reduces 175 to 150 cordobas`() {
+        val config = StoreAndPricingConfig(
+            preferentialThreshold = 150.0,
+            preferentialDiscountPercent = 15.0,
+            roundingMode = RoundingMode.MULTIPLE_5
+        )
+
+        // 1. Caso exacto del dueño: 175 C$ calculado se reduce a 150 C$
+        val preferentialFor175 = RoutingAndFareCalculator.calculatePreferentialFare(
+            calculatedTotal = 175.0,
+            threshold = config.preferentialThreshold,
+            discountPercent = config.preferentialDiscountPercent,
+            roundingMode = config.roundingMode
+        )
+        assertEquals(150.0, preferentialFor175, 0.001)
+
+        // 2. Si la tarifa no excede el umbral (ej. 150 C$ o 120 C$), se mantiene intacta
+        val standard150 = RoutingAndFareCalculator.calculatePreferentialFare(
+            calculatedTotal = 150.0,
+            threshold = config.preferentialThreshold,
+            discountPercent = config.preferentialDiscountPercent,
+            roundingMode = config.roundingMode
+        )
+        assertEquals(150.0, standard150, 0.001)
+
+        val standard120 = RoutingAndFareCalculator.calculatePreferentialFare(
+            calculatedTotal = 120.0,
+            threshold = config.preferentialThreshold,
+            discountPercent = config.preferentialDiscountPercent,
+            roundingMode = config.roundingMode
+        )
+        assertEquals(120.0, standard120, 0.001)
+
+        // 3. Ruta muy lejana (ej. 200 C$): 200 * 0.85 = 170 C$ (ahorro de 30 C$)
+        val preferentialFor200 = RoutingAndFareCalculator.calculatePreferentialFare(
+            calculatedTotal = 200.0,
+            threshold = config.preferentialThreshold,
+            discountPercent = config.preferentialDiscountPercent,
+            roundingMode = config.roundingMode
+        )
+        assertEquals(170.0, preferentialFor200, 0.001)
+    }
+
+    @Test
+    fun `customer whatsapp message reflects preferential rate discount line`() {
+        val config = StoreAndPricingConfig(currencySymbol = "C$")
+        val frozenDest = LocationParserAndFreezer.parseDirectOrPlusCode(
+            "geo:12.127541,-86.264102?q=12.127541,-86.264102(Tipitapa+Centro)"
+        )!!
+
+        val store = GeoCoordinate(12.158438, -86.305688)
+        val route = RouteResult(
+            straightLineKm = 14.5,
+            adjustedStraightLineKm = 18.8,
+            osrmDrivingKm = 15.5,
+            osrmDurationMinutes = 35.0,
+            routeGeometry = listOf(store, frozenDest.coordinate),
+            usedMode = DistanceCalculationMode.OSRM_DRIVING,
+            effectiveDistanceKm = 15.5
+        )
+
+        // Tarifa mínima 40 (2 km) + 13.5 km * 10 = 175 C$
+        val rawQuote = RoutingAndFareCalculator.calculateQuoteBreakdown(
+            route = route,
+            modeOverride = DistanceCalculationMode.OSRM_DRIVING,
+            config = config,
+            applyOffHours = false,
+            applyHoliday = false,
+            applyRainOrDemand = false
+        )
+        assertEquals(175.0, rawQuote.finalRoundedTotal, 0.01)
+
+        // Aplicar tarifa preferencial acordada de C$ 150
+        val quoteWithPreferential = rawQuote.copy(customTotalOverride = 150.0)
+        assertEquals(150.0, quoteWithPreferential.effectiveTotal, 0.01)
+
+        val customerMsg = RoutingAndFareCalculator.buildCustomerWhatsAppSummary(
+            config = config,
+            destination = frozenDest,
+            quote = quoteWithPreferential,
+            customerNote = "Cliente Ruta Lejana"
+        )
+
+        assertTrue(customerMsg.contains("• Tarifa mínima envío (incluye 2.0 km): C$ 40"))
+        assertTrue(customerMsg.contains("• Tarifa de distancia (13.50 km × C$ 10/km): +C$ 135"))
+        assertTrue(customerMsg.contains("• Descuento Tarifa Preferencial: -C$ 25"))
+        assertTrue(customerMsg.contains("💰 *TOTAL ENVÍO: C$ 150*"))
+    }
 }

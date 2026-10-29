@@ -57,6 +57,9 @@ data class DeliveryUiState(
     val productAmount: Double = 0.0,
     val productAmountInput: String = "",
     val isLoadingRouteOrLink: Boolean = false,
+    val showPreferentialRateDialog: Boolean = false,
+    val suggestedPreferentialRate: Double = 0.0,
+    val isPreferentialApplied: Boolean = false,
     val statusBannerMessage: String? = null,
     val errorMessage: String? = null,
     val history: List<SavedQuoteRecord> = emptyList()
@@ -206,7 +209,56 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             val currentQuote = state.quoteBreakdown
             state.copy(
                 customTotalOverride = amount,
+                isPreferentialApplied = if (amount == null) false else state.isPreferentialApplied,
                 quoteBreakdown = currentQuote?.copy(customTotalOverride = amount)
+            )
+        }
+    }
+
+    fun dismissPreferentialRateDialog() {
+        _uiState.update { it.copy(showPreferentialRateDialog = false) }
+    }
+
+    fun openPreferentialRateDialog() {
+        _uiState.update { state ->
+            val total = state.quoteBreakdown?.finalRoundedTotal ?: 0.0
+            val cfg = state.config
+            val suggested = if (total > 0.0) {
+                RoutingAndFareCalculator.calculatePreferentialFare(
+                    calculatedTotal = total,
+                    threshold = cfg.preferentialThreshold,
+                    discountPercent = cfg.preferentialDiscountPercent,
+                    roundingMode = cfg.roundingMode
+                )
+            } else 0.0
+            state.copy(
+                suggestedPreferentialRate = suggested,
+                showPreferentialRateDialog = true
+            )
+        }
+    }
+
+    fun applyPreferentialRate(customAmount: Double? = null) {
+        _uiState.update { state ->
+            val currentQuote = state.quoteBreakdown
+            val amountToApply = customAmount ?: state.suggestedPreferentialRate
+            state.copy(
+                customTotalOverride = amountToApply,
+                isPreferentialApplied = true,
+                showPreferentialRateDialog = false,
+                quoteBreakdown = currentQuote?.copy(customTotalOverride = amountToApply)
+            )
+        }
+    }
+
+    fun removePreferentialRate() {
+        _uiState.update { state ->
+            val currentQuote = state.quoteBreakdown
+            state.copy(
+                customTotalOverride = null,
+                isPreferentialApplied = false,
+                showPreferentialRateDialog = false,
+                quoteBreakdown = currentQuote?.copy(customTotalOverride = null)
             )
         }
     }
@@ -444,7 +496,14 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
         if (quote.holidayApplied) surchargesList.add("Día festivo")
         if (quote.rainApplied) surchargesList.add("Lluvia/Demanda")
         if (quote.manualExtraAdjustment != 0.0) surchargesList.add("Recargo manual")
-        if (quote.customTotalOverride != null) surchargesList.add("Tarifa editada")
+        if (quote.customTotalOverride != null) {
+            val diff = quote.finalRoundedTotal - quote.customTotalOverride
+            if (diff > 0.01) {
+                surchargesList.add("Tarifa preferencial (-${state.config.currencySymbol}${diff.toInt()})")
+            } else {
+                surchargesList.add("Tarifa editada")
+            }
+        }
         state.selectedZone?.let { surchargesList.add("Zona: ${it.name}") }
 
         val now = Date()
@@ -597,12 +656,30 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             customTotalOverride = null
         )
 
+        val shouldPrompt = cfg.preferentialAutoPrompt &&
+            quote.finalRoundedTotal > cfg.preferentialThreshold &&
+            stateSnapshot.customTotalOverride == null
+
+        val suggestedRate = if (quote.finalRoundedTotal > cfg.preferentialThreshold) {
+            RoutingAndFareCalculator.calculatePreferentialFare(
+                calculatedTotal = quote.finalRoundedTotal,
+                threshold = cfg.preferentialThreshold,
+                discountPercent = cfg.preferentialDiscountPercent,
+                roundingMode = cfg.roundingMode
+            )
+        } else {
+            0.0
+        }
+
         _uiState.update {
             it.copy(
                 frozenDestination = destination,
                 routeResult = route,
                 quoteBreakdown = quote,
                 customTotalOverride = null,
+                isPreferentialApplied = false,
+                showPreferentialRateDialog = shouldPrompt,
+                suggestedPreferentialRate = suggestedRate,
                 isLoadingRouteOrLink = false,
                 statusBannerMessage = bannerMsg,
                 errorMessage = null
@@ -632,6 +709,25 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             customTotalOverride = customTotalOverride
         )
 
-        return copy(quoteBreakdown = updatedQuote)
+        val suggestedRate = if (updatedQuote.finalRoundedTotal > config.preferentialThreshold) {
+            RoutingAndFareCalculator.calculatePreferentialFare(
+                calculatedTotal = updatedQuote.finalRoundedTotal,
+                threshold = config.preferentialThreshold,
+                discountPercent = config.preferentialDiscountPercent,
+                roundingMode = config.roundingMode
+            )
+        } else {
+            0.0
+        }
+
+        val stillPreferential = customTotalOverride != null &&
+            customTotalOverride < updatedQuote.finalRoundedTotal &&
+            isPreferentialApplied
+
+        return copy(
+            quoteBreakdown = updatedQuote,
+            suggestedPreferentialRate = suggestedRate,
+            isPreferentialApplied = stillPreferential
+        )
     }
 }

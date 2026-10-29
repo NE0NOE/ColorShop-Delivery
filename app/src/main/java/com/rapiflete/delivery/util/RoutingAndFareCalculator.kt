@@ -265,6 +265,23 @@ object RoutingAndFareCalculator {
         }
     }
 
+    /**
+     * Calcula la tarifa preferencial sugerida cuando el monto calculado supera el umbral razonable.
+     * Por ejemplo: Para una tarifa calculada de C$ 175 con umbral de C$ 150 y reducción del 15%,
+     * devuelve exactamente C$ 150 (con redondeo a múltiplos de 5).
+     */
+    fun calculatePreferentialFare(
+        calculatedTotal: Double,
+        threshold: Double,
+        discountPercent: Double,
+        roundingMode: RoundingMode
+    ): Double {
+        if (calculatedTotal <= threshold) return calculatedTotal
+        val discounted = calculatedTotal * (1.0 - (discountPercent.coerceIn(0.0, 99.0) / 100.0))
+        val bounded = maxOf(threshold, discounted)
+        return applyRounding(bounded, roundingMode)
+    }
+
     fun formatMoney(amount: Double, currencySymbol: String): String {
         val isWhole = amount % 1.0 == 0.0
         return if (isWhole) {
@@ -369,6 +386,14 @@ object RoutingAndFareCalculator {
         if (quote.manualExtraAdjustment != 0.0) {
             val sign = if (quote.manualExtraAdjustment > 0) "+" else ""
             sb.appendLine("• Cargo adicional: $sign${formatMoney(quote.manualExtraAdjustment, cur)}")
+        }
+        if (quote.customTotalOverride != null) {
+            val diff = quote.finalRoundedTotal - quote.customTotalOverride
+            if (diff > 0.01) {
+                sb.appendLine("• Descuento Tarifa Preferencial: -${formatMoney(diff, cur)}")
+            } else if (diff < -0.01) {
+                sb.appendLine("• Cargo adicional acordado: +${formatMoney(-diff, cur)}")
+            }
         }
         if (productAmount > 0.0) {
             sb.appendLine("🛵 *Subtotal Envío:* ${formatMoney(deliveryFee, cur)}")

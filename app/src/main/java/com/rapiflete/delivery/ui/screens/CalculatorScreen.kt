@@ -147,7 +147,10 @@ fun CalculatorScreen(
     onSelectPaymentMethod: (PaymentMethodType) -> Unit,
     onSelectTransferBank: (TransferBankType) -> Unit,
     onSaveToHistory: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onApplyPreferentialRate: (Double?) -> Unit = {},
+    onDismissPreferentialDialog: () -> Unit = {},
+    onOpenPreferentialDialog: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
@@ -572,6 +575,86 @@ fun CalculatorScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFF893B92)
                             )
+                        }
+                    }
+
+                    // Aviso y acceso directo a Tarifa Preferencial si supera el umbral
+                    if (quote.finalRoundedTotal > uiState.config.preferentialThreshold) {
+                        val isApplied = quote.customTotalOverride != null && quote.customTotalOverride < quote.finalRoundedTotal
+                        if (isApplied) {
+                            Surface(
+                                color = ColorShopPrimary.copy(alpha = 0.12f),
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable { onOpenPreferentialDialog() }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("⭐", fontSize = 12.sp)
+                                    Text(
+                                        text = "Tarifa Preferencial Activa: $cur ${quote.effectiveTotal.toInt()}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopPrimary
+                                    )
+                                    val diff = (quote.finalRoundedTotal - quote.effectiveTotal).toInt()
+                                    if (diff > 0) {
+                                        Text(
+                                            text = "(-$cur $diff ahorro)",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF2E7D32)
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Surface(
+                                color = Color(0xFFFFF3E0),
+                                shape = RoundedCornerShape(14.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFB74D)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable { onOpenPreferentialDialog() }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text("⭐", fontSize = 16.sp)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "Tarifa alta detectada (> $cur ${uiState.config.preferentialThreshold.toInt()})",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = Color(0xFFE65100)
+                                        )
+                                        Text(
+                                            text = "Toca para aplicar tarifa preferencial sugerida de $cur ${uiState.suggestedPreferentialRate.toInt()}.",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF6D4C41)
+                                        )
+                                    }
+                                    Surface(
+                                        color = ColorShopPrimary,
+                                        shape = RoundedCornerShape(50)
+                                    ) {
+                                        Text(
+                                            text = "Aplicar",
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -1254,6 +1337,31 @@ fun CalculatorScreen(
                         fontWeight = FontWeight.SemiBold,
                         color = ColorShopMutedPlum
                     )
+                    if (currentQuote.finalRoundedTotal > uiState.config.preferentialThreshold) {
+                        Surface(
+                            color = ColorShopPrimary.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    editedAmountText = String.format(Locale.US, "%.0f", uiState.suggestedPreferentialRate)
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text("⭐", fontSize = 14.sp)
+                                Text(
+                                    text = "Sugerir tarifa preferencial: ${uiState.config.currencySymbol} ${uiState.suggestedPreferentialRate.toInt()}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ColorShopPrimary
+                                )
+                            }
+                        }
+                    }
                     OutlinedTextField(
                         value = editedAmountText,
                         onValueChange = { editedAmountText = it },
@@ -1299,6 +1407,196 @@ fun CalculatorScreen(
                     TextButton(onClick = { showEditPriceDialog = false }) {
                         Text("Cancelar", color = ColorShopPrimary)
                     }
+                }
+            }
+        )
+    }
+
+    // Diálogo emergente (Pop-up) para aviso y aplicación de Tarifa Preferencial
+    if (uiState.showPreferentialRateDialog && uiState.quoteBreakdown != null) {
+        val currentQuote = uiState.quoteBreakdown
+        val cur = uiState.config.currencySymbol
+        val calculated = currentQuote.finalRoundedTotal
+        val suggested = if (uiState.suggestedPreferentialRate > 0.0) {
+            uiState.suggestedPreferentialRate
+        } else {
+            RoutingAndFareCalculator.calculatePreferentialFare(
+                calculatedTotal = calculated,
+                threshold = uiState.config.preferentialThreshold,
+                discountPercent = uiState.config.preferentialDiscountPercent,
+                roundingMode = uiState.config.roundingMode
+            )
+        }
+
+        var preferentialInputText by remember(suggested, calculated) {
+            mutableStateOf(String.format(Locale.US, "%.0f", suggested))
+        }
+
+        AlertDialog(
+            onDismissRequest = onDismissPreferentialDialog,
+            containerColor = Color.White,
+            shape = RoundedCornerShape(26.dp),
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(ColorShopPrimary.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("⭐", fontSize = 18.sp)
+                    }
+                    Column {
+                        Text(
+                            text = "Tarifa Preferencial",
+                            fontWeight = FontWeight.ExtraBold,
+                            color = ColorShopDeepPlum,
+                            fontSize = 18.sp
+                        )
+                        Text(
+                            text = "Aviso por distancia lejana",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = ColorShopMutedPlum
+                        )
+                    }
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "La ruta calculada suma $cur ${calculated.toInt()} (${String.format(Locale.US, "%.1f km", currentQuote.effectiveDistanceKm)}). Al superar el umbral de $cur ${uiState.config.preferentialThreshold.toInt()}, es recomendable aplicar una tarifa preferencial para que el cliente no rechace el envío por el costo.",
+                        fontSize = 12.sp,
+                        color = ColorShopDeepPlum,
+                        lineHeight = 17.sp
+                    )
+
+                    // Comparativa visual de precios
+                    Surface(
+                        color = ColorShopSurfaceLow.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "Tarifa calculada:",
+                                    fontSize = 11.sp,
+                                    color = ColorShopMutedPlum
+                                )
+                                Text(
+                                    text = "$cur ${calculated.toInt()}",
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.Gray,
+                                    textDecoration = androidx.compose.ui.text.style.TextDecoration.LineThrough
+                                )
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "Tarifa preferencial:",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ColorShopPrimary
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.Bottom,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = "$cur ${suggested.toInt()}",
+                                        fontSize = 22.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = ColorShopPrimary
+                                    )
+                                    val saving = (calculated - suggested).toInt()
+                                    if (saving > 0) {
+                                        Text(
+                                            text = "(-$cur $saving)",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF2E7D32)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Campo editable para confirmar o personalizar el monto preferencial
+                    OutlinedTextField(
+                        value = preferentialInputText,
+                        onValueChange = { preferentialInputText = it },
+                        label = { Text("Monto preferencial a cobrar ($cur)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ColorShopPrimary,
+                            unfocusedBorderColor = ColorShopSurfaceHigh
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    // Presets rápidos
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val presets = listOf(
+                            suggested.toInt(),
+                            (suggested - 10).toInt(),
+                            (suggested + 10).toInt()
+                        ).distinct().filter { it > 0 }
+
+                        presets.forEach { p ->
+                            val isSel = preferentialInputText.trim() == p.toString()
+                            Surface(
+                                color = if (isSel) ColorShopPrimary else ColorShopSurfaceLow,
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier
+                                    .clickable { preferentialInputText = p.toString() }
+                            ) {
+                                Text(
+                                    text = if (p == suggested.toInt()) "$cur $p (Sugerido)" else "$cur $p",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isSel) Color.White else ColorShopDeepPlum,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val parsed = preferentialInputText.replace(",", ".").trim().toDoubleOrNull()
+                        onApplyPreferentialRate(if (parsed != null && parsed > 0) parsed else suggested)
+                    },
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary)
+                ) {
+                    Text(
+                        "Aplicar Tarifa ($cur ${preferentialInputText.trim().ifBlank { suggested.toInt().toString() }})",
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissPreferentialDialog) {
+                    Text("Mantener $cur ${calculated.toInt()}", color = ColorShopMutedPlum)
                 }
             }
         )

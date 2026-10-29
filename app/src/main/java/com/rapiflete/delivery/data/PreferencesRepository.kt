@@ -60,7 +60,10 @@ class PreferencesRepository(context: Context) {
             rainOrHighDemandSurchargeType = runCatching { SurchargeType.valueOf(rainType!!) }.getOrDefault(defaults.rainOrHighDemandSurchargeType),
             rainOrHighDemandSurchargeValue = prefs.getString("rainOrHighDemandSurchargeValue", defaults.rainOrHighDemandSurchargeValue.toString())?.toDoubleOrNull() ?: defaults.rainOrHighDemandSurchargeValue,
             roundingMode = runCatching { RoundingMode.valueOf(roundingName!!) }.getOrDefault(defaults.roundingMode),
-            defaultShareFormat = runCatching { ShareOutputFormat.valueOf(shareFmtName!!) }.getOrDefault(defaults.defaultShareFormat)
+            defaultShareFormat = runCatching { ShareOutputFormat.valueOf(shareFmtName!!) }.getOrDefault(defaults.defaultShareFormat),
+            preferentialThreshold = prefs.getString("preferentialThreshold", defaults.preferentialThreshold.toString())?.toDoubleOrNull() ?: defaults.preferentialThreshold,
+            preferentialDiscountPercent = prefs.getString("preferentialDiscountPercent", defaults.preferentialDiscountPercent.toString())?.toDoubleOrNull() ?: defaults.preferentialDiscountPercent,
+            preferentialAutoPrompt = prefs.getBoolean("preferentialAutoPrompt", defaults.preferentialAutoPrompt)
         )
     }
 
@@ -96,6 +99,9 @@ class PreferencesRepository(context: Context) {
             putString("rainOrHighDemandSurchargeValue", config.rainOrHighDemandSurchargeValue.toString())
             putString("roundingMode", config.roundingMode.name)
             putString("defaultShareFormat", config.defaultShareFormat.name)
+            putString("preferentialThreshold", config.preferentialThreshold.toString())
+            putString("preferentialDiscountPercent", config.preferentialDiscountPercent.toString())
+            putBoolean("preferentialAutoPrompt", config.preferentialAutoPrompt)
             apply()
         }
     }

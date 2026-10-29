@@ -155,7 +155,10 @@ data class StoreAndPricingConfig(
     val rainOrHighDemandSurchargeType: SurchargeType = SurchargeType.FIXED,
     val rainOrHighDemandSurchargeValue: Double = 20.0,
     val roundingMode: RoundingMode = RoundingMode.MULTIPLE_5,
-    val defaultShareFormat: ShareOutputFormat = ShareOutputFormat.WHATSAPP_TEXT
+    val defaultShareFormat: ShareOutputFormat = ShareOutputFormat.WHATSAPP_TEXT,
+    val preferentialThreshold: Double = 150.0,
+    val preferentialDiscountPercent: Double = 15.0,
+    val preferentialAutoPrompt: Boolean = true
 ) {
     val storeCoordinate: GeoCoordinate
         get() = GeoCoordinate(storeLat, storeLng)

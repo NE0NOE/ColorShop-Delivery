@@ -123,6 +123,9 @@ fun SettingsScreen(
 
     var roundingMode by remember(currentConfig) { mutableStateOf(currentConfig.roundingMode) }
     var defaultShareFormat by remember(currentConfig) { mutableStateOf(currentConfig.defaultShareFormat) }
+    var preferentialAutoPrompt by remember(currentConfig) { mutableStateOf(currentConfig.preferentialAutoPrompt) }
+    var preferentialThresholdText by remember(currentConfig) { mutableStateOf(currentConfig.preferentialThreshold.toString()) }
+    var preferentialDiscountText by remember(currentConfig) { mutableStateOf(currentConfig.preferentialDiscountPercent.toString()) }
 
     fun buildCurrentConfig(): StoreAndPricingConfig = currentConfig.copy(
         currencySymbol = currencySymbol,
@@ -145,7 +148,10 @@ fun SettingsScreen(
         rainOrHighDemandSurchargeType = rainType,
         rainOrHighDemandSurchargeValue = rainValText.toDoubleOrNull() ?: currentConfig.rainOrHighDemandSurchargeValue,
         roundingMode = roundingMode,
-        defaultShareFormat = defaultShareFormat
+        defaultShareFormat = defaultShareFormat,
+        preferentialAutoPrompt = preferentialAutoPrompt,
+        preferentialThreshold = preferentialThresholdText.toDoubleOrNull() ?: currentConfig.preferentialThreshold,
+        preferentialDiscountPercent = preferentialDiscountText.toDoubleOrNull() ?: currentConfig.preferentialDiscountPercent
     )
 
     DisposableEffect(Unit) {
@@ -522,6 +528,171 @@ fun SettingsScreen(
                             color = ColorShopMutedPlum,
                             modifier = Modifier.padding(10.dp)
                         )
+                    }
+                }
+            }
+
+            // SECCIÓN: ⭐ Tarifa Preferencial por Distancia (Umbral Máximo y Descuento)
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(26.dp),
+                shadowElevation = 5.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(26.dp))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(ColorShopSurfaceLow),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("⭐", fontSize = 16.sp)
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Tarifa Preferencial por Distancia",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopDeepPlum
+                            )
+                            Text(
+                                text = "Aviso emergente sugerido cuando el precio del envío excede lo razonable",
+                                fontSize = 11.sp,
+                                color = ColorShopMutedPlum
+                            )
+                        }
+                    }
+
+                    // Switch para activar/desactivar pop-up automático
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(ColorShopSurfaceLow.copy(alpha = 0.45f))
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Aviso emergente automático (Pop-up)",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopDeepPlum
+                            )
+                            Text(
+                                text = "Muestra una alerta con el descuento sugerido al cotizar rutas lejanas",
+                                fontSize = 11.sp,
+                                color = ColorShopMutedPlum
+                            )
+                        }
+                        Switch(
+                            checked = preferentialAutoPrompt,
+                            onCheckedChange = { preferentialAutoPrompt = it },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = ColorShopPrimary
+                            )
+                        )
+                    }
+
+                    // Grid 2 columnas: Umbral y Descuento %
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        // Umbral
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "UMBRAL MÁXIMO",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopMutedPlum
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            OutlinedTextField(
+                                value = preferentialThresholdText,
+                                onValueChange = { preferentialThresholdText = it },
+                                prefix = { Text("$currencySymbol ", fontWeight = FontWeight.Bold, color = ColorShopMutedPlum) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                shape = RoundedCornerShape(16.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ColorShopPrimary,
+                                    unfocusedBorderColor = ColorShopSurfaceHigh,
+                                    focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                                    unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        // Porcentaje de reducción
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "REDUCCIÓN SUGERIDA",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopMutedPlum
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            OutlinedTextField(
+                                value = preferentialDiscountText,
+                                onValueChange = { preferentialDiscountText = it },
+                                suffix = { Text("%", fontWeight = FontWeight.Bold, color = ColorShopMutedPlum) },
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                singleLine = true,
+                                shape = RoundedCornerShape(16.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ColorShopPrimary,
+                                    unfocusedBorderColor = ColorShopSurfaceHigh,
+                                    focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                                    unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+
+                    // Tarjeta explicativa con ejemplo en vivo
+                    val previewThresh = preferentialThresholdText.toDoubleOrNull() ?: 150.0
+                    val previewDisc = preferentialDiscountText.toDoubleOrNull() ?: 15.0
+                    val sample175Result = com.rapiflete.delivery.util.RoutingAndFareCalculator.calculatePreferentialFare(
+                        calculatedTotal = 175.0,
+                        threshold = previewThresh,
+                        discountPercent = previewDisc,
+                        roundingMode = roundingMode
+                    )
+                    val sampleSaving = (175.0 - sample175Result).toInt()
+
+                    Surface(
+                        color = ColorShopPrimary.copy(alpha = 0.08f),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = "💡 Ejemplo con tu configuración actual:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopPrimary
+                            )
+                            Text(
+                                text = "Si un envío calcula $currencySymbol 175 (mayor al umbral de $currencySymbol ${previewThresh.toInt()}), el pop-up sugerirá dejarlo en $currencySymbol ${sample175Result.toInt()} (ahorro de $currencySymbol $sampleSaving para el cliente).",
+                                fontSize = 11.sp,
+                                color = ColorShopDeepPlum
+                            )
+                        }
                     }
                 }
             }
