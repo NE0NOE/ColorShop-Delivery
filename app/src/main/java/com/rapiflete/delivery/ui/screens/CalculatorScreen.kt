@@ -94,7 +94,9 @@ import androidx.compose.ui.unit.sp
 import com.rapiflete.delivery.R
 import com.rapiflete.delivery.model.CourierDriver
 import com.rapiflete.delivery.model.DistanceCalculationMode
+import com.rapiflete.delivery.model.OrderStatus
 import com.rapiflete.delivery.model.PaymentMethodType
+import com.rapiflete.delivery.model.ShareOutputFormat
 import com.rapiflete.delivery.model.SpecialZoneRule
 import com.rapiflete.delivery.model.TransferBankType
 import com.rapiflete.delivery.ui.components.ColorShopTopBar
@@ -109,6 +111,7 @@ import com.rapiflete.delivery.ui.theme.ColorShopSoftButtonText
 import com.rapiflete.delivery.ui.theme.ColorShopSurface
 import com.rapiflete.delivery.ui.theme.ColorShopSurfaceHigh
 import com.rapiflete.delivery.ui.theme.ColorShopSurfaceLow
+import com.rapiflete.delivery.util.ReceiptImageGenerator
 import com.rapiflete.delivery.util.RoutingAndFareCalculator
 import com.rapiflete.delivery.viewmodel.DeliveryUiState
 import java.io.File
@@ -1025,6 +1028,44 @@ fun CalculatorScreen(
                     }
                 }
 
+                // Indicador de Formato de Compartir Activo (Texto vs Imagen Digital)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Formato al compartir:",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = ColorShopMutedPlum
+                    )
+                    Surface(
+                        color = ColorShopSurfaceHigh,
+                        shape = RoundedCornerShape(50),
+                        modifier = Modifier.clickable { onOpenSettings() }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = if (cfg.defaultShareFormat == ShareOutputFormat.IMAGE_RECEIPT) "🖼️ Recibo en Imagen" else "💬 Mensaje de Texto",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopPrimary
+                            )
+                            Text(
+                                text = "Ajustar",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopMutedPlum
+                            )
+                        }
+                    }
+                }
+
                 // Botones Gemelos de Acción (Cliente | Delivery)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1049,7 +1090,30 @@ fun CalculatorScreen(
                                     productAmount = uiState.productAmount
                                 )
                                 copyToClipboard(context, "Cotización ColorShop", summary)
-                                shareTextToWhatsAppOrChooser(context, summary)
+                                if (cfg.defaultShareFormat == ShareOutputFormat.IMAGE_RECEIPT) {
+                                    val bitmap = ReceiptImageGenerator.generateCustomerReceiptBitmap(
+                                        config = cfg,
+                                        destination = dest,
+                                        quote = quote,
+                                        customerNote = uiState.customerNote,
+                                        customerPhone = uiState.customerPhone,
+                                        orderComments = uiState.orderComments,
+                                        approximateDeliveryTime = uiState.approximateDeliveryTime,
+                                        courier = uiState.selectedCourier,
+                                        paymentMethod = uiState.selectedPaymentMethod,
+                                        transferBank = uiState.selectedTransferBank,
+                                        productAmount = uiState.productAmount,
+                                        orderStatus = OrderStatus.EN_RUTA
+                                    )
+                                    val imageUri = ReceiptImageGenerator.saveBitmapToShareCache(
+                                        context,
+                                        bitmap,
+                                        "recibo_cliente"
+                                    )
+                                    ReceiptImageGenerator.shareReceiptImage(context, imageUri, summary)
+                                } else {
+                                    shareTextToWhatsAppOrChooser(context, summary)
+                                }
                             }
                         },
                         enabled = hasDestination,
@@ -1101,7 +1165,30 @@ fun CalculatorScreen(
                                     transferBank = uiState.selectedTransferBank
                                 )
                                 copyToClipboard(context, "Despacho ColorShop", dispatchText)
-                                shareTextToWhatsAppOrChooser(context, dispatchText)
+                                if (cfg.defaultShareFormat == ShareOutputFormat.IMAGE_RECEIPT) {
+                                    val bitmap = ReceiptImageGenerator.generateCustomerReceiptBitmap(
+                                        config = cfg,
+                                        destination = dest,
+                                        quote = quote,
+                                        customerNote = uiState.customerNote,
+                                        customerPhone = uiState.customerPhone,
+                                        orderComments = uiState.orderComments,
+                                        approximateDeliveryTime = uiState.approximateDeliveryTime,
+                                        courier = uiState.selectedCourier,
+                                        paymentMethod = uiState.selectedPaymentMethod,
+                                        transferBank = uiState.selectedTransferBank,
+                                        productAmount = uiState.productAmount,
+                                        orderStatus = OrderStatus.EN_RUTA
+                                    )
+                                    val imageUri = ReceiptImageGenerator.saveBitmapToShareCache(
+                                        context,
+                                        bitmap,
+                                        "despacho_delivery"
+                                    )
+                                    ReceiptImageGenerator.shareReceiptImage(context, imageUri, dispatchText)
+                                } else {
+                                    shareTextToWhatsAppOrChooser(context, dispatchText)
+                                }
                             }
                         },
                         enabled = hasDestination,

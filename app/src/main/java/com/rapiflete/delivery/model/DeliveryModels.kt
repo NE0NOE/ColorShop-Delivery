@@ -65,6 +65,11 @@ enum class OrderStatus(val label: String, val emoji: String) {
     CANCELADO("Cancelado", "❌")
 }
 
+enum class ShareOutputFormat(val label: String, val shortLabel: String) {
+    WHATSAPP_TEXT("Texto para WhatsApp", "Texto"),
+    IMAGE_RECEIPT("Imagen de Recibo Digital", "Imagen")
+}
+
 enum class PaymentMethodType(val label: String, val badgeLabel: String) {
     CASH("Efectivo", "Cobro Efectivo"),
     TRANSFER("Transferencia", "Transferencia Bancaria"),
@@ -149,7 +154,8 @@ data class StoreAndPricingConfig(
     val holidaySurchargeValue: Double = 20.0,
     val rainOrHighDemandSurchargeType: SurchargeType = SurchargeType.FIXED,
     val rainOrHighDemandSurchargeValue: Double = 20.0,
-    val roundingMode: RoundingMode = RoundingMode.MULTIPLE_5
+    val roundingMode: RoundingMode = RoundingMode.MULTIPLE_5,
+    val defaultShareFormat: ShareOutputFormat = ShareOutputFormat.WHATSAPP_TEXT
 ) {
     val storeCoordinate: GeoCoordinate
         get() = GeoCoordinate(storeLat, storeLng)
@@ -212,18 +218,20 @@ data class SavedQuoteRecord(
     val transferBank: String = "BAC",
     val paymentDetail: String = "Pago contra entrega",
     val receiptId: String = "#CS-88421",
-    val destinationLat: Double,
-    val destinationLng: Double,
-    val destinationLabel: String,
-    val capturedAtTime: String,
-    val distanceKm: Double,
+    val destinationLat: Double = 0.0,
+    val destinationLng: Double = 0.0,
+    val destinationLabel: String = "",
+    val capturedAtTime: String = "",
+    val distanceKm: Double = 0.0,
     val durationMinutes: Int = 14,
-    val modeLabel: String,
-    val surchargesSummary: String,
+    val modeLabel: String = "",
+    val surchargesSummary: String = "",
     val productAmount: Double = 0.0,
     val deliveryFee: Double = 0.0,
-    val totalAmount: Double,
-    val currencySymbol: String,
+    val totalAmount: Double = 0.0,
+    val currencySymbol: String = "C$",
     val orderStatus: OrderStatus = OrderStatus.EN_RUTA,
-    val driverSettlementNote: String = ""
+    val driverSettlementNote: String = "",
+    val isDriverPaid: Boolean = false,
+    val driverPaidAt: String = ""
 )

@@ -9,6 +9,7 @@ import com.rapiflete.delivery.model.OrderStatus
 import com.rapiflete.delivery.model.PaymentMethodType
 import com.rapiflete.delivery.model.RoundingMode
 import com.rapiflete.delivery.model.SavedQuoteRecord
+import com.rapiflete.delivery.model.ShareOutputFormat
 import com.rapiflete.delivery.model.SpecialZoneRule
 import com.rapiflete.delivery.model.StoreAndPricingConfig
 import com.rapiflete.delivery.model.SurchargeType
@@ -27,6 +28,7 @@ class PreferencesRepository(context: Context) {
         val offType = prefs.getString("offHoursSurchargeType", defaults.offHoursSurchargeType.name)
         val holType = prefs.getString("holidaySurchargeType", defaults.holidaySurchargeType.name)
         val rainType = prefs.getString("rainOrHighDemandSurchargeType", defaults.rainOrHighDemandSurchargeType.name)
+        val shareFmtName = prefs.getString("defaultShareFormat", defaults.defaultShareFormat.name)
 
         return StoreAndPricingConfig(
             storeName = prefs.getString("storeName", defaults.storeName) ?: defaults.storeName,
@@ -57,7 +59,8 @@ class PreferencesRepository(context: Context) {
             holidaySurchargeValue = prefs.getString("holidaySurchargeValue", defaults.holidaySurchargeValue.toString())?.toDoubleOrNull() ?: defaults.holidaySurchargeValue,
             rainOrHighDemandSurchargeType = runCatching { SurchargeType.valueOf(rainType!!) }.getOrDefault(defaults.rainOrHighDemandSurchargeType),
             rainOrHighDemandSurchargeValue = prefs.getString("rainOrHighDemandSurchargeValue", defaults.rainOrHighDemandSurchargeValue.toString())?.toDoubleOrNull() ?: defaults.rainOrHighDemandSurchargeValue,
-            roundingMode = runCatching { RoundingMode.valueOf(roundingName!!) }.getOrDefault(defaults.roundingMode)
+            roundingMode = runCatching { RoundingMode.valueOf(roundingName!!) }.getOrDefault(defaults.roundingMode),
+            defaultShareFormat = runCatching { ShareOutputFormat.valueOf(shareFmtName!!) }.getOrDefault(defaults.defaultShareFormat)
         )
     }
 
@@ -92,6 +95,7 @@ class PreferencesRepository(context: Context) {
             putString("rainOrHighDemandSurchargeType", config.rainOrHighDemandSurchargeType.name)
             putString("rainOrHighDemandSurchargeValue", config.rainOrHighDemandSurchargeValue.toString())
             putString("roundingMode", config.roundingMode.name)
+            putString("defaultShareFormat", config.defaultShareFormat.name)
             apply()
         }
     }
@@ -238,7 +242,9 @@ class PreferencesRepository(context: Context) {
                         totalAmount = obj.optDouble("totalAmount"),
                         currencySymbol = obj.optString("currencySymbol", "C$"),
                         orderStatus = runCatching { OrderStatus.valueOf(obj.optString("orderStatus")) }.getOrDefault(OrderStatus.EN_RUTA),
-                        driverSettlementNote = obj.optString("driverSettlementNote", "")
+                        driverSettlementNote = obj.optString("driverSettlementNote", ""),
+                        isDriverPaid = obj.optBoolean("isDriverPaid", runCatching { PaymentMethodType.valueOf(obj.optString("paymentMethod")) }.getOrDefault(PaymentMethodType.CASH) == PaymentMethodType.CASH),
+                        driverPaidAt = obj.optString("driverPaidAt", "")
                     )
                 )
             }
@@ -281,6 +287,8 @@ class PreferencesRepository(context: Context) {
                 put("currencySymbol", record.currencySymbol)
                 put("orderStatus", record.orderStatus.name)
                 put("driverSettlementNote", record.driverSettlementNote)
+                put("isDriverPaid", record.isDriverPaid)
+                put("driverPaidAt", record.driverPaidAt)
             }
             arr.put(obj)
         }

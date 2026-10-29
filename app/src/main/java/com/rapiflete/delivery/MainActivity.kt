@@ -120,12 +120,14 @@ class MainActivity : ComponentActivity() {
                                 records = uiState.history,
                                 couriers = uiState.couriers,
                                 currencySymbol = uiState.config.currencySymbol,
+                                config = uiState.config,
                                 onSelectRecord = { record ->
                                     viewModel.loadRecordFromHistory(record)
                                     currentTab = 0
                                 },
                                 onDeleteRecord = viewModel::deleteHistoryRecord,
                                 onUpdateOrderStatus = viewModel::updateOrderStatus,
+                                onToggleDriverPaid = viewModel::toggleDriverPaymentStatus,
                                 onClearAll = viewModel::clearAllHistory
                             )
                             2 -> SettingsScreen(

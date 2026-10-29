@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rapiflete.delivery.model.CourierDriver
 import com.rapiflete.delivery.model.RoundingMode
+import com.rapiflete.delivery.model.ShareOutputFormat
 import com.rapiflete.delivery.model.SpecialZoneRule
 import com.rapiflete.delivery.model.StoreAndPricingConfig
 import com.rapiflete.delivery.model.SurchargeType
@@ -121,6 +122,7 @@ fun SettingsScreen(
     var newZoneAppliesExtraKm by remember { mutableStateOf(false) }
 
     var roundingMode by remember(currentConfig) { mutableStateOf(currentConfig.roundingMode) }
+    var defaultShareFormat by remember(currentConfig) { mutableStateOf(currentConfig.defaultShareFormat) }
 
     fun buildCurrentConfig(): StoreAndPricingConfig = currentConfig.copy(
         currencySymbol = currencySymbol,
@@ -142,7 +144,8 @@ fun SettingsScreen(
         holidaySurchargeValue = holidayValText.toDoubleOrNull() ?: currentConfig.holidaySurchargeValue,
         rainOrHighDemandSurchargeType = rainType,
         rainOrHighDemandSurchargeValue = rainValText.toDoubleOrNull() ?: currentConfig.rainOrHighDemandSurchargeValue,
-        roundingMode = roundingMode
+        roundingMode = roundingMode,
+        defaultShareFormat = defaultShareFormat
     )
 
     DisposableEffect(Unit) {
@@ -245,6 +248,95 @@ fun SettingsScreen(
                             modifier = Modifier.size(15.dp)
                         )
                     }
+                }
+            }
+
+            // SECCIÓN: 📄 Formato de Recibo / Compartir (Texto vs. Imagen Digital)
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(26.dp),
+                shadowElevation = 5.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(26.dp))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(ColorShopSurfaceLow),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("📄", fontSize = 18.sp)
+                        }
+                        Column {
+                            Text(
+                                text = "Formato de Recibo / Compartir",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopDeepPlum
+                            )
+                            Text(
+                                text = "Elige si enviar cotizaciones y comprobantes como texto o como imagen",
+                                fontSize = 11.sp,
+                                color = ColorShopMutedPlum
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(ColorShopSurfaceLow.copy(alpha = 0.5f))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        ShareOutputFormat.entries.forEach { fmt ->
+                            val isSelected = defaultShareFormat == fmt
+                            Surface(
+                                color = if (isSelected) ColorShopPrimary else Color.Transparent,
+                                shape = RoundedCornerShape(12.dp),
+                                shadowElevation = if (isSelected) 3.dp else 0.dp,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clickable { defaultShareFormat = fmt }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Text(
+                                        text = if (fmt == ShareOutputFormat.WHATSAPP_TEXT) "💬 Texto WhatsApp" else "🖼️ Imagen Recibo",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.White else ColorShopDeepPlum,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = if (defaultShareFormat == ShareOutputFormat.IMAGE_RECEIPT) {
+                            "🖼️ Generará un recibo gráfico de alta calidad con el logo ColorShop, datos del cliente, estado del pedido y liquidación del motorizado para compartir directamente por WhatsApp."
+                        } else {
+                            "💬 Enviará un mensaje formateado con texto y emojis listo para copiar o enviar directamente en el chat de WhatsApp."
+                        },
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = ColorShopMutedPlum
+                    )
                 }
             }
 

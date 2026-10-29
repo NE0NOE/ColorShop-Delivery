@@ -153,4 +153,92 @@ class DeliveryCalculatorAndParserTest {
         assertTrue(customerMsgWithCourierAndSchedule.contains("💳 *Método de pago:* Transferencia (Lafise)"))
         assertTrue(customerMsgWithCourierAndSchedule.contains("⏰ *Horarios de atención:*"))
     }
+
+    @Test
+    fun `driver settlement accounting accurately excludes cash and accumulates electronic debt across days`() {
+        val config = StoreAndPricingConfig()
+
+        // 1. Pedido en efectivo de hoy: el motorizado cobra y se descuenta su tarifa (isDriverPaid = true)
+        val cashOrderToday = com.rapiflete.delivery.model.SavedQuoteRecord(
+            id = "rec-1",
+            dateIso = "2026-10-29",
+            timestamp = "10:00 AM",
+            customerNote = "Cliente Efectivo",
+            courierName = "Walter",
+            paymentMethod = PaymentMethodType.CASH,
+            deliveryFee = 120.0,
+            productAmount = 500.0,
+            totalAmount = 620.0,
+            isDriverPaid = true,
+            driverPaidAt = "Auto-descontado en efectivo"
+        )
+
+        // 2. Pedido de ayer por transferencia: la tienda le debe la tarifa de delivery al motorizado
+        val transferOrderYesterday = com.rapiflete.delivery.model.SavedQuoteRecord(
+            id = "rec-2",
+            dateIso = "2026-10-28",
+            timestamp = "03:15 PM",
+            customerNote = "Cliente Ayer Transfer",
+            courierName = "Walter",
+            paymentMethod = PaymentMethodType.TRANSFER,
+            deliveryFee = 150.0,
+            productAmount = 800.0,
+            totalAmount = 950.0,
+            isDriverPaid = false,
+            driverPaidAt = ""
+        )
+
+        // 3. Pedido de hoy por POS: la tienda le debe la tarifa de delivery al motorizado
+        val posOrderToday = com.rapiflete.delivery.model.SavedQuoteRecord(
+            id = "rec-3",
+            dateIso = "2026-10-29",
+            timestamp = "11:30 AM",
+            customerNote = "Cliente POS",
+            courierName = "Walter",
+            paymentMethod = PaymentMethodType.POS,
+            deliveryFee = 100.0,
+            productAmount = 300.0,
+            totalAmount = 400.0,
+            isDriverPaid = false,
+            driverPaidAt = ""
+        )
+
+        val history = listOf(cashOrderToday, transferOrderYesterday, posOrderToday)
+
+        // Filtrar envíos con saldo pendiente a pagar al motorizado:
+        // Debe excluir efectivo (porque es auto-descontado) y solo sumar los no pagados de transfer/POS
+        val unpaidOrders = history.filter {
+            !it.isDriverPaid && it.paymentMethod != PaymentMethodType.CASH
+        }
+
+        assertEquals(2, unpaidOrders.size)
+        val totalOwedAllTime = unpaidOrders.sumOf { it.deliveryFee }
+        // 150 (ayer) + 100 (hoy) = 250
+        assertEquals(250.0, totalOwedAllTime, 0.001)
+
+        val unpaidPastDays = unpaidOrders.filter { it.dateIso != "2026-10-29" }
+        assertEquals(1, unpaidPastDays.size)
+        assertEquals(150.0, unpaidPastDays.sumOf { it.deliveryFee }, 0.001)
+
+        val unpaidToday = unpaidOrders.filter { it.dateIso == "2026-10-29" }
+        assertEquals(1, unpaidToday.size)
+        assertEquals(100.0, unpaidToday.sumOf { it.deliveryFee }, 0.001)
+
+        // Al marcar el pedido de ayer como pagado:
+        val updatedYesterday = transferOrderYesterday.copy(isDriverPaid = true, driverPaidAt = "2026-10-29 12:00 PM")
+        val updatedHistory = listOf(cashOrderToday, updatedYesterday, posOrderToday)
+        val remainingUnpaid = updatedHistory.filter { !it.isDriverPaid && it.paymentMethod != PaymentMethodType.CASH }
+
+        assertEquals(1, remainingUnpaid.size)
+        assertEquals(100.0, remainingUnpaid.sumOf { it.deliveryFee }, 0.001)
+    }
+
+    @Test
+    fun `share output format enum is supported in config`() {
+        val configDefault = StoreAndPricingConfig()
+        assertEquals(com.rapiflete.delivery.model.ShareOutputFormat.WHATSAPP_TEXT, configDefault.defaultShareFormat)
+
+        val configImage = configDefault.copy(defaultShareFormat = com.rapiflete.delivery.model.ShareOutputFormat.IMAGE_RECEIPT)
+        assertEquals(com.rapiflete.delivery.model.ShareOutputFormat.IMAGE_RECEIPT, configImage.defaultShareFormat)
+    }
 }

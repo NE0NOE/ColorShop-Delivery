@@ -83,6 +83,7 @@ import com.rapiflete.delivery.model.GeoCoordinate
 import com.rapiflete.delivery.model.OrderStatus
 import com.rapiflete.delivery.model.PaymentMethodType
 import com.rapiflete.delivery.model.SavedQuoteRecord
+import com.rapiflete.delivery.model.StoreAndPricingConfig
 import com.rapiflete.delivery.ui.components.ColorShopTopBar
 import com.rapiflete.delivery.ui.theme.ColorShopDeepPlum
 import com.rapiflete.delivery.ui.theme.ColorShopMutedPlum
@@ -93,6 +94,7 @@ import com.rapiflete.delivery.ui.theme.ColorShopSurfaceHigh
 import com.rapiflete.delivery.ui.theme.ColorShopSurfaceLow
 import com.rapiflete.delivery.ui.theme.ColorShopTertiaryBlue
 import com.rapiflete.delivery.ui.theme.ColorShopTertiaryFixed
+import com.rapiflete.delivery.util.ReceiptImageGenerator
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -104,9 +106,11 @@ fun HistoryScreen(
     records: List<SavedQuoteRecord>,
     couriers: List<CourierDriver>,
     currencySymbol: String,
+    config: StoreAndPricingConfig = StoreAndPricingConfig(),
     onSelectRecord: (SavedQuoteRecord) -> Unit,
     onDeleteRecord: (String) -> Unit,
     onUpdateOrderStatus: (String, OrderStatus) -> Unit = { _, _ -> },
+    onToggleDriverPaid: (String) -> Unit = {},
     onClearAll: () -> Unit
 ) {
     val context = LocalContext.current
@@ -121,6 +125,30 @@ fun HistoryScreen(
     var selectedPaymentFilter by remember { mutableStateOf("ALL") } // ALL, CASH, TRANSFER
     var selectedCourierName by remember { mutableStateOf<String?>(null) }
     var selectedStatusFilter by remember { mutableStateOf<OrderStatus?>(null) }
+    var showOnlyUnpaidDriverDeliveries by remember { mutableStateOf(false) }
+
+    // Envíos con pago electrónico no liquidados al motorizado (acumula hoy, ayer y días anteriores)
+    // Los pagos en efectivo se excluyen porque el motorizado ya se los auto-descuenta de inmediato.
+    val allUnpaidElectronicDeliveries = remember(records, selectedCourierName) {
+        records.filter { rec ->
+            !rec.isDriverPaid &&
+            rec.paymentMethod != PaymentMethodType.CASH &&
+            rec.orderStatus != OrderStatus.CANCELADO &&
+            (selectedCourierName == null || rec.courierName.equals(selectedCourierName, ignoreCase = true))
+        }
+    }
+
+    val totalOwedAllTime = remember(allUnpaidElectronicDeliveries) {
+        allUnpaidElectronicDeliveries.sumOf { it.deliveryFee }
+    }
+
+    val unpaidPastDays = remember(allUnpaidElectronicDeliveries, todayIso) {
+        allUnpaidElectronicDeliveries.filter { (it.dateIso.ifBlank { todayIso }) != todayIso }
+    }
+
+    val unpaidToday = remember(allUnpaidElectronicDeliveries, todayIso) {
+        allUnpaidElectronicDeliveries.filter { (it.dateIso.ifBlank { todayIso }) == todayIso }
+    }
 
     // Filtrar estrictamente por la fecha seleccionada para no acarrear datos de días pasados
     val recordsForSelectedDate = remember(records, selectedDateIso) {
@@ -147,6 +175,17 @@ fun HistoryScreen(
                 rec.courierName.equals(selectedCourierName, ignoreCase = true)
             val matchesStatus = selectedStatusFilter == null || rec.orderStatus == selectedStatusFilter
             matchesPayment && matchesCourier && matchesStatus
+        }
+    }
+
+    val displayedRecords = remember(showOnlyUnpaidDriverDeliveries, allUnpaidElectronicDeliveries, filteredRecords, selectedStatusFilter) {
+        if (showOnlyUnpaidDriverDeliveries) {
+            allUnpaidElectronicDeliveries.filter { rec ->
+                val matchesStatus = selectedStatusFilter == null || rec.orderStatus == selectedStatusFilter
+                matchesStatus
+            }
+        } else {
+            filteredRecords
         }
     }
 
@@ -678,6 +717,178 @@ fun HistoryScreen(
             }
         }
 
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Recuadro Bento Destacado: Saldo Pendiente a Pagar al Motorizado (Hoy y Acumulado de Días Anteriores)
+        Surface(
+            color = if (totalOwedAllTime > 0) Color(0xFFFFF8E1) else Color(0xFFF1F8E9),
+            shape = RoundedCornerShape(20.dp),
+            shadowElevation = 4.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+                .border(
+                    1.dp,
+                    if (totalOwedAllTime > 0) Color(0xFFFFB300).copy(alpha = 0.7f) else Color(0xFF81C784).copy(alpha = 0.7f),
+                    RoundedCornerShape(20.dp)
+                )
+        ) {
+            Column(
+                modifier = Modifier.padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(if (totalOwedAllTime > 0) Color(0xFFFFB300) else Color(0xFF4CAF50)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Payments,
+                                contentDescription = null,
+                                tint = Color.White,
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = "Total a Pagar al Motorizado",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopDeepPlum
+                            )
+                            Text(
+                                text = if (selectedCourierName != null) "Repartidor: $selectedCourierName" else "Todos los repartidores",
+                                fontSize = 11.sp,
+                                color = ColorShopMutedPlum
+                            )
+                        }
+                    }
+
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "$currencySymbol ${totalOwedAllTime.toInt()}",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (totalOwedAllTime > 0) Color(0xFFE65100) else Color(0xFF2E7D32)
+                        )
+                        Text(
+                            text = if (totalOwedAllTime > 0) "Pendiente tienda" else "Al día ✅",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (totalOwedAllTime > 0) Color(0xFFE65100) else Color(0xFF2E7D32)
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = if (totalOwedAllTime > 0) Color(0xFFFFE082) else Color(0xFFC8E6C9))
+
+                // Desglose de saldos: acumulado de días anteriores vs saldo de hoy
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    if (totalOwedAllTime > 0) {
+                        if (unpaidPastDays.isNotEmpty()) {
+                            Text(
+                                text = "⚠️ Acumulado de días anteriores: $currencySymbol ${unpaidPastDays.sumOf { it.deliveryFee }.toInt()} (${unpaidPastDays.size} envíos)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFD84315)
+                            )
+                        }
+                        Text(
+                            text = "• Saldo pendiente de hoy: $currencySymbol ${unpaidToday.sumOf { it.deliveryFee }.toInt()} (${unpaidToday.size} envíos)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = ColorShopDeepPlum
+                        )
+                        Text(
+                            text = "ℹ️ Los envíos en efectivo fueron auto-descontados por el motorizado (ya liquidados).",
+                            fontSize = 10.sp,
+                            color = ColorShopMutedPlum
+                        )
+                    } else {
+                        Text(
+                            text = "No hay tarifas de entrega pendientes de liquidar por transferencias ni POS con el motorizado.",
+                            fontSize = 11.sp,
+                            color = Color(0xFF2E7D32)
+                        )
+                    }
+                }
+
+                // Botones rápidos: Conmutar lista de pendientes acumulados y Generar Liquidación Gráfica
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        color = if (showOnlyUnpaidDriverDeliveries) Color(0xFFE65100) else Color.White,
+                        shape = RoundedCornerShape(50),
+                        shadowElevation = 1.dp,
+                        modifier = Modifier
+                            .weight(1.1f)
+                            .height(34.dp)
+                            .clickable { showOnlyUnpaidDriverDeliveries = !showOnlyUnpaidDriverDeliveries }
+                            .border(1.dp, Color(0xFFE65100), RoundedCornerShape(50))
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+                            Text(
+                                text = if (showOnlyUnpaidDriverDeliveries) "Ver vista normal por fecha" else "Ver Pendientes (${allUnpaidElectronicDeliveries.size})",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (showOnlyUnpaidDriverDeliveries) Color.White else Color(0xFFE65100)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        color = ColorShopPrimary,
+                        shape = RoundedCornerShape(50),
+                        shadowElevation = 2.dp,
+                        modifier = Modifier
+                            .weight(0.9f)
+                            .height(34.dp)
+                            .clickable {
+                                val targetRecords = if (selectedCourierName != null) {
+                                    records.filter { it.courierName.equals(selectedCourierName, ignoreCase = true) }
+                                } else {
+                                    records
+                                }
+                                val reportBitmap = ReceiptImageGenerator.generateDriverSettlementReportBitmap(
+                                    courierName = selectedCourierName ?: "General",
+                                    records = targetRecords,
+                                    currencySymbol = currencySymbol
+                                )
+                                val uri = ReceiptImageGenerator.saveBitmapToShareCache(context, reportBitmap, "liquidacion_cuentas")
+                                ReceiptImageGenerator.shareReceiptImage(
+                                    context,
+                                    uri,
+                                    "Corte de Cuentas y Liquidación • ColorShop Delivery • Repartidor: ${selectedCourierName ?: "Todos"}"
+                                )
+                            }
+                    ) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+                            Text(
+                                text = "Liquidación 📊",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         Spacer(modifier = Modifier.height(14.dp))
 
         // Filas Horizontales de Chips de Filtro (Estado del Pedido, Método de cobro y Repartidores)
@@ -783,8 +994,42 @@ fun HistoryScreen(
 
         Spacer(modifier = Modifier.height(14.dp))
 
+        // Banner informativo cuando el filtro de pendientes acumulados está activado
+        if (showOnlyUnpaidDriverDeliveries) {
+            Surface(
+                color = Color(0xFFFFF3E0),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .border(1.dp, Color(0xFFE65100).copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Mostrando ${displayedRecords.size} envíos con tarifa pendiente al motorizado (acumulado)",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFBF360C),
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = "Ver por fecha",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = ColorShopPrimary,
+                        modifier = Modifier.clickable { showOnlyUnpaidDriverDeliveries = false }
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
         // Línea de Tiempo Vertical de Envíos
-        if (filteredRecords.isEmpty()) {
+        if (displayedRecords.isEmpty()) {
             Surface(
                 color = Color.White,
                 shape = RoundedCornerShape(20.dp),
@@ -807,14 +1052,14 @@ fun HistoryScreen(
                         modifier = Modifier.size(32.dp)
                     )
                     Text(
-                        text = "Sin envíos registrados en esta fecha",
+                        text = if (showOnlyUnpaidDriverDeliveries) "No hay envíos pendientes de pago al motorizado" else "Sin envíos registrados en esta fecha",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         color = ColorShopDeepPlum,
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        text = "Los envíos de días anteriores están guardados en sus respectivas fechas. Usa el botón del calendario para consultarlos.",
+                        text = if (showOnlyUnpaidDriverDeliveries) "Todas las transferencias y cobros con datáfono están al día." else "Los envíos de días anteriores están guardados en sus respectivas fechas. Usa el botón del calendario para consultarlos.",
                         fontSize = 11.sp,
                         color = ColorShopMutedPlum,
                         textAlign = TextAlign.Center
@@ -828,11 +1073,13 @@ fun HistoryScreen(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                filteredRecords.forEach { record ->
+                displayedRecords.forEach { record ->
                     TimelineHistoryItem(
                         record = record,
+                        config = config,
                         onSelectInMap = { onSelectRecord(record) },
                         onUpdateStatus = { newStatus -> onUpdateOrderStatus(record.id, newStatus) },
+                        onToggleDriverPaid = { onToggleDriverPaid(record.id) },
                         onDelete = { onDeleteRecord(record.id) }
                     )
                 }
@@ -874,8 +1121,10 @@ private fun HistoryFilterPill(
 @Composable
 private fun TimelineHistoryItem(
     record: SavedQuoteRecord,
+    config: StoreAndPricingConfig = StoreAndPricingConfig(),
     onSelectInMap: () -> Unit,
     onUpdateStatus: (OrderStatus) -> Unit = {},
+    onToggleDriverPaid: () -> Unit = {},
     onDelete: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1257,6 +1506,104 @@ private fun TimelineHistoryItem(
                     }
                 }
 
+                // Estado de Liquidación con el Motorizado (Efectivo auto-descontado vs Transferencia/POS pendiente o pagado)
+                if (record.paymentMethod == PaymentMethodType.CASH) {
+                    Surface(
+                        color = Color(0xFFE8F5E9),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color(0xFF2E7D32).copy(alpha = 0.25f), RoundedCornerShape(10.dp))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "💵 Tarifa auto-descontada en efectivo",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1B5E20)
+                                )
+                                Text(
+                                    text = "El motorizado cobró ${record.currencySymbol}${record.totalAmount.toInt()} en mano y retuvo su tarifa de ${record.currencySymbol}${record.deliveryFee.toInt()} (Liquidado).",
+                                    fontSize = 10.sp,
+                                    color = Color(0xFF2E7D32)
+                                )
+                            }
+                            Surface(
+                                color = Color(0xFF2E7D32),
+                                shape = RoundedCornerShape(50)
+                            ) {
+                                Text(
+                                    text = "Liquidado ✅",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Transferencia bancaria o Datafono POS
+                    Surface(
+                        color = if (record.isDriverPaid) Color(0xFFE8F5E9) else Color(0xFFFFF3E0),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(
+                                1.dp,
+                                if (record.isDriverPaid) Color(0xFF2E7D32).copy(alpha = 0.25f) else Color(0xFFE65100).copy(alpha = 0.35f),
+                                RoundedCornerShape(10.dp)
+                            )
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (record.isDriverPaid) {
+                                        "✅ Tarifa pagada al motorizado (${record.currencySymbol}${record.deliveryFee.toInt()})"
+                                    } else {
+                                        "⏳ Pendiente pagar al motorizado (${record.currencySymbol}${record.deliveryFee.toInt()})"
+                                    },
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (record.isDriverPaid) Color(0xFF1B5E20) else Color(0xFFBF360C)
+                                )
+                                Text(
+                                    text = if (record.isDriverPaid) {
+                                        if (record.driverPaidAt.isNotBlank()) "Liquidado: ${record.driverPaidAt}" else "Pago completado por la tienda"
+                                    } else {
+                                        "Cobro vía ${record.paymentMethod.badgeLabel}. La tienda debe liquidar este saldo al motorizado."
+                                    },
+                                    fontSize = 10.sp,
+                                    color = if (record.isDriverPaid) Color(0xFF2E7D32) else Color(0xFFE65100)
+                                )
+                            }
+                            Surface(
+                                color = if (record.isDriverPaid) ColorShopSurfaceHigh else Color(0xFFE65100),
+                                shape = RoundedCornerShape(50),
+                                shadowElevation = if (record.isDriverPaid) 0.dp else 2.dp,
+                                modifier = Modifier.clickable { onToggleDriverPaid() }
+                            ) {
+                                Text(
+                                    text = if (record.isDriverPaid) "Desmarcar ↩️" else "Marcar Pagado ✅",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (record.isDriverPaid) ColorShopPrimary else Color.White,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // Cliente y Ubicación de destino
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
@@ -1458,7 +1805,7 @@ private fun TimelineHistoryItem(
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Surface(
@@ -1478,11 +1825,11 @@ private fun TimelineHistoryItem(
                                                 imageVector = Icons.Default.Map,
                                                 contentDescription = null,
                                                 tint = ColorShopPrimary,
-                                                modifier = Modifier.size(15.dp)
+                                                modifier = Modifier.size(14.dp)
                                             )
-                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Spacer(modifier = Modifier.width(3.dp))
                                             Text(
-                                                text = "Ver en Mapa",
+                                                text = "Mapa",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = ColorShopPrimary
@@ -1492,6 +1839,47 @@ private fun TimelineHistoryItem(
 
                                     Surface(
                                         color = ColorShopPrimary,
+                                        shape = RoundedCornerShape(50),
+                                        modifier = Modifier
+                                            .weight(1.1f)
+                                            .height(34.dp)
+                                            .clickable {
+                                                val bitmap = ReceiptImageGenerator.generateRecordReceiptBitmap(record, config)
+                                                val uri = ReceiptImageGenerator.saveBitmapToShareCache(
+                                                    context,
+                                                    bitmap,
+                                                    "recibo_${record.receiptId.replace("#", "")}"
+                                                )
+                                                ReceiptImageGenerator.shareReceiptImage(
+                                                    context,
+                                                    uri,
+                                                    "Comprobante de Entrega ${record.receiptId} • ColorShop Delivery"
+                                                )
+                                            }
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.Center,
+                                            modifier = Modifier.fillMaxSize()
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ReceiptLong,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Text(
+                                                text = "Recibo 🖼️",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        color = ColorShopSurfaceLow,
                                         shape = RoundedCornerShape(50),
                                         modifier = Modifier
                                             .weight(1f)
@@ -1519,15 +1907,15 @@ private fun TimelineHistoryItem(
                                             Icon(
                                                 imageVector = Icons.Default.ContentCopy,
                                                 contentDescription = null,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(14.dp)
+                                                tint = ColorShopDeepPlum,
+                                                modifier = Modifier.size(13.dp)
                                             )
-                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Spacer(modifier = Modifier.width(3.dp))
                                             Text(
-                                                text = "Copiar Ubicación",
+                                                text = "Copiar",
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color.White
+                                                color = ColorShopDeepPlum
                                             )
                                         }
                                     }

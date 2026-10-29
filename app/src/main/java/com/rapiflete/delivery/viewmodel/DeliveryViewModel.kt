@@ -484,7 +484,9 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             totalAmount = totalAmount,
             currencySymbol = state.config.currencySymbol,
             orderStatus = OrderStatus.EN_RUTA,
-            driverSettlementNote = settlementNote
+            driverSettlementNote = settlementNote,
+            isDriverPaid = state.selectedPaymentMethod == PaymentMethodType.CASH,
+            driverPaidAt = if (state.selectedPaymentMethod == PaymentMethodType.CASH) "Auto-descontado en efectivo" else ""
         )
 
         val updatedHistory = listOf(record) + state.history
@@ -501,6 +503,24 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
     fun updateOrderStatus(recordId: String, newStatus: OrderStatus) {
         val updated = _uiState.value.history.map {
             if (it.id == recordId) it.copy(orderStatus = newStatus) else it
+        }
+        repository.saveHistory(updated)
+        _uiState.update { it.copy(history = updated) }
+    }
+
+    fun toggleDriverPaymentStatus(recordId: String) {
+        val timeFormat = SimpleDateFormat("yyyy-MM-dd hh:mm a", Locale.US)
+        val nowIso = timeFormat.format(Date())
+        val updated = _uiState.value.history.map { record ->
+            if (record.id == recordId) {
+                val nowPaid = !record.isDriverPaid
+                record.copy(
+                    isDriverPaid = nowPaid,
+                    driverPaidAt = if (nowPaid) nowIso else ""
+                )
+            } else {
+                record
+            }
         }
         repository.saveHistory(updated)
         _uiState.update { it.copy(history = updated) }
