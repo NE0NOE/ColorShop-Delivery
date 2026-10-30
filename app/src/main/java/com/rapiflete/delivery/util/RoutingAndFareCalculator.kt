@@ -339,7 +339,21 @@ object RoutingAndFareCalculator {
         if (customerPhone.isNotBlank()) {
             sb.appendLine("📞 *Teléfono:* $customerPhone")
         }
-        sb.appendLine("📍 *Destino:* ${destination.label}")
+        val mapUrl = destination.coordinate.toStaticGoogleMapsUrl()
+        val destLabelClean = destination.label
+            .replace("congelada", "", ignoreCase = true)
+            .replace("congelado", "", ignoreCase = true)
+            .trim()
+            .trimEnd(',', '-')
+            .trim()
+
+        if (destLabelClean.isNotBlank() && !destLabelClean.startsWith("Ubicación en mapa", ignoreCase = true) && !destLabelClean.startsWith("Punto en mapa", ignoreCase = true)) {
+            sb.appendLine("📍 *Destino:* $destLabelClean")
+            sb.appendLine("🗺️ *Ubicación en mapa:* $mapUrl")
+        } else {
+            sb.appendLine("📍 *Destino:* Ubicación enviada en mapa")
+            sb.appendLine("🗺️ *Ubicación en mapa:* $mapUrl")
+        }
         sb.appendLine("📏 *Distancia:* ${String.format(Locale.US, "%.2f km", quote.effectiveDistanceKm)}")
         if (approximateDeliveryTime.isNotBlank()) {
             sb.appendLine("🕒 *Hora aprox. de entrega:* $approximateDeliveryTime")
@@ -471,11 +485,19 @@ object RoutingAndFareCalculator {
         if (orderComments.isNotBlank()) {
             sb.appendLine("📝 *Comentarios:* $orderComments")
         }
-        if (destination.label.isNotBlank() && !destination.label.startsWith("Ubicación") && !destination.label.startsWith("Pin") && !destination.label.startsWith("Enlace")) {
-            sb.appendLine("🏠 *Dirección:* ${destination.label}")
+        val mapUrl = destination.coordinate.toStaticGoogleMapsUrl()
+        val driverDestLabelClean = destination.label
+            .replace("congelada", "", ignoreCase = true)
+            .replace("congelado", "", ignoreCase = true)
+            .trim()
+            .trimEnd(',', '-')
+            .trim()
+
+        if (driverDestLabelClean.isNotBlank() && !driverDestLabelClean.startsWith("Ubicación", ignoreCase = true) && !driverDestLabelClean.startsWith("Pin", ignoreCase = true) && !driverDestLabelClean.startsWith("Punto", ignoreCase = true) && !driverDestLabelClean.startsWith("Enlace", ignoreCase = true)) {
+            sb.appendLine("🏠 *Dirección:* $driverDestLabelClean")
         }
         sb.appendLine("📍 *Ubicación de entrega:*")
-        sb.appendLine(destination.coordinate.toStaticGoogleMapsUrl())
+        sb.appendLine(mapUrl)
         sb.appendLine("📏 *Distancia:* ${String.format(Locale.US, "%.2f km", quote.effectiveDistanceKm)}")
         sb.appendLine("────────────────────")
         sb.appendLine("💰 *CUENTAS Y LIQUIDACIÓN MOTORIZADO:*")

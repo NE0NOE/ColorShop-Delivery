@@ -14,7 +14,7 @@ data class GeoCoordinate(
         return String.format(Locale.US, "https://maps.google.com/?q=%.6f,%.6f", latitude, longitude)
     }
 
-    fun toGeoUri(label: String = "Destino Congelado"): String {
+    fun toGeoUri(label: String = "Punto de entrega"): String {
         val encodedLabel = java.net.URLEncoder.encode(label, "UTF-8")
         return String.format(
             Locale.US,
@@ -122,7 +122,8 @@ data class FrozenDestination(
     val sourceRawText: String,
     val capturedAtTime: String,
     val isFrozen: Boolean = true,
-    val sourceType: LocationSourceType = LocationSourceType.WHATSAPP_SHARE
+    val sourceType: LocationSourceType = LocationSourceType.WHATSAPP_SHARE,
+    val detectedZoneMunicipality: String? = null
 )
 
 data class StoreAndPricingConfig(

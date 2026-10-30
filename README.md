@@ -27,11 +27,29 @@ Aplicación móvil nativa para Android (**Kotlin + Jetpack Compose + OpenStreetM
   - **Adjunto de foto de recibo o respaldo** almacenada localmente en la aplicación.
 - **Métodos de cobro**: Efectivo, POS / Tarjeta y **Transferencia Bancaria** con selección entre **BAC**, **Lafise**, **Banpro** y **Ficohsa**.
 
-### 3. Mensajes Personalizados para Cliente y Motorizado 📲
-- **Botón Cliente (con ícono de mariposa)**: Envía la cotización completa con destino, distancia, hora aproximada de entrega, comentarios, datos del motorizado asignado y **horarios de atención habilitados** de la tienda (omitiendo automáticamente el domingo cuando esté desactivado).
-- **Botón Delivery**: Envía al repartidor los datos del cliente, comentarios, hora aproximada de entrega, distancia y el enlace directo de **Ubicación de entrega** en Google Maps (sin incluir montos de pago ni tienda de salida).
+### 3. Mensajes y Comprobantes Diferenciados (Cliente vs. Delivery) 📲🖼️
+- **Recibo Oficial Digital para Cliente**:
+  - Al generar el comprobante en imagen para el cliente, el recuadro final muestra la forma de pago (Efectivo, Transferencia o POS) y un mensaje cordial de confirmación.
+  - Se eliminan por completo las notas internas de liquidación al motorizado, retención de tarifas y auto-descuentos en el recibo del cliente.
+- **Hoja de Despacho Digital para Motorizado**:
+  - Al generar la imagen para el repartidor, incluye los montos a cobrar en entrega, el desglose de mercadería y el recuadro destacado de liquidación (si retiene su tarifa en efectivo o si ColorShop le liquida su envío por transferencia/POS).
+- **Acceso Directo a Google Maps en WhatsApp**:
+  - Tanto en la cotización al cliente como en el despacho al motorizado, el destino incluye un enlace directo y clickeable de Google Maps (`https://maps.google.com/?q=...`).
+  - Eliminación de etiquetas técnicas como "congelada" o "congelado", mostrando el nombre real del barrio, calle o punto en mapa.
+- **Geocodificación Inversa Automática**:
+  - Al recibir un pin o link de ubicación de WhatsApp, el sistema consulta OpenStreetMap Nominatim para resolver automáticamente el nombre legible de la calle, barrio o municipio.
 
-### 4. Administración de Repartidores y Visibilidad 🛵
+### 4. Detección Automática de Zonas Aledañas Fuera de Managua 📍
+- **Tarifas estándar para Managua Urbana**:
+  - Todo barrio dentro de los 7 distritos urbanos de Managua aplica automáticamente las tarifas normales de la aplicación (tarifa mínima base C$ 40 + km adicional).
+- **Detección automática por coordenadas y nombre**:
+  - Si el destino se encuentra fuera de los distritos urbanos de Managua, el sistema detecta y aplica automáticamente la zona correspondiente:
+    - **Ciudad Sandino**: Tarifa base de **C$ 100**.
+    - **Ticuantepe**: Tarifa base de **C$ 120**.
+    - **Tipitapa**: Tarifa base de **C$ 120**.
+  - Si el usuario cambia el destino a un barrio dentro de Managua, la cotización se restaura automáticamente a la tarifa estándar.
+
+### 5. Administración de Repartidores y Visibilidad 🛵
 - Directorio de motorizados con registro de nombre, placa, teléfono y turno.
 - **Eliminación de repartidores**: Opción para eliminar motorizados con confirmación modal para prevenir borrados accidentales.
 - **Casillas de visibilidad individuales** (`Mostrar nombre` y `Mostrar número`) para controlar si el nombre y/o teléfono de cada motorizado se incluyen en la cotización enviada al cliente.

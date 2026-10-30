@@ -331,4 +331,110 @@ class DeliveryCalculatorAndParserTest {
         assertTrue(customerMsg.contains("• Descuento Tarifa Preferencial: -C$ 25"))
         assertTrue(customerMsg.contains("💰 *TOTAL ENVÍO: C$ 150*"))
     }
+
+    @Test
+    fun `zone detector automatically identifies Ciudad Sandino Ticuantepe and Tipitapa and excludes urban Managua`() {
+        val testZones = listOf(
+            com.rapiflete.delivery.model.SpecialZoneRule(id = "z1", name = "Ciudad Sandino", basePrice = 100.0),
+            com.rapiflete.delivery.model.SpecialZoneRule(id = "z2", name = "Ticuantepe", basePrice = 120.0),
+            com.rapiflete.delivery.model.SpecialZoneRule(id = "z3", name = "Tipitapa", basePrice = 120.0)
+        )
+
+        // 1. Ciudad Sandino por coordenadas y por texto
+        val sandinoByCoord = com.rapiflete.delivery.util.ZoneDetector.detectZone(
+            coord = GeoCoordinate(12.161, -86.345),
+            addressText = "Barrio Bello Amanecer",
+            availableZones = testZones
+        )
+        assertNotNull(sandinoByCoord)
+        assertEquals("Ciudad Sandino", sandinoByCoord!!.name)
+        assertEquals(100.0, sandinoByCoord.basePrice, 0.01)
+
+        val sandinoByText = com.rapiflete.delivery.util.ZoneDetector.detectZone(
+            coord = GeoCoordinate(12.136, -86.251), // coord genérica
+            addressText = "Ciudad Sandino, zona 4",
+            availableZones = testZones
+        )
+        assertNotNull(sandinoByText)
+        assertEquals("Ciudad Sandino", sandinoByText!!.name)
+
+        // 2. Ticuantepe por coordenadas y por texto
+        val ticuantepeByCoord = com.rapiflete.delivery.util.ZoneDetector.detectZone(
+            coord = GeoCoordinate(12.023, -86.205),
+            addressText = "Calle Principal",
+            availableZones = testZones
+        )
+        assertNotNull(ticuantepeByCoord)
+        assertEquals("Ticuantepe", ticuantepeByCoord!!.name)
+        assertEquals(120.0, ticuantepeByCoord.basePrice, 0.01)
+
+        // 3. Tipitapa por coordenadas y por texto
+        val tipitapaByCoord = com.rapiflete.delivery.util.ZoneDetector.detectZone(
+            coord = GeoCoordinate(12.198, -86.096),
+            addressText = "Empalme de Tipitapa",
+            availableZones = testZones
+        )
+        assertNotNull(tipitapaByCoord)
+        assertEquals("Tipitapa", tipitapaByCoord!!.name)
+        assertEquals(120.0, tipitapaByCoord.basePrice, 0.01)
+
+        // 4. Barrio dentro de Managua urbana (Altamira, El Riguero, Linda Vista) -> Tarifa normal (null)
+        val managuaUrban = com.rapiflete.delivery.util.ZoneDetector.detectZone(
+            coord = GeoCoordinate(12.1364, -86.2514),
+            addressText = "El Riguero, Distrito I, Managua",
+            availableZones = testZones
+        )
+        org.junit.Assert.assertNull(managuaUrban)
+    }
+
+    @Test
+    fun `whatsapp messages never contain congelada and always include clickable Google Maps link`() {
+        val config = StoreAndPricingConfig()
+        val dest = com.rapiflete.delivery.model.FrozenDestination(
+            coordinate = GeoCoordinate(12.145678, -86.265432),
+            label = "Ubicación de WhatsApp congelada",
+            sourceRawText = "https://maps.google.com/?q=12.145678,-86.265432",
+            capturedAtTime = "12:00:00"
+        )
+        val route = RouteResult(
+            straightLineKm = 4.0,
+            adjustedStraightLineKm = 5.2,
+            osrmDrivingKm = 4.8,
+            osrmDurationMinutes = 12.0,
+            routeGeometry = listOf(config.storeCoordinate, dest.coordinate),
+            usedMode = DistanceCalculationMode.OSRM_DRIVING,
+            effectiveDistanceKm = 4.8
+        )
+        val quote = RoutingAndFareCalculator.calculateQuoteBreakdown(
+            route = route,
+            modeOverride = DistanceCalculationMode.OSRM_DRIVING,
+            config = config,
+            applyOffHours = false,
+            applyHoliday = false,
+            applyRainOrDemand = false
+        )
+
+        val customerMsg = RoutingAndFareCalculator.buildCustomerWhatsAppSummary(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente WhatsApp"
+        )
+
+        // Comprobar que NO contiene 'congelad'
+        org.junit.Assert.assertFalse(customerMsg.contains("congelada", ignoreCase = true))
+        org.junit.Assert.assertFalse(customerMsg.contains("congelado", ignoreCase = true))
+
+        // Comprobar que incluye el enlace clickeable de Google Maps
+        assertTrue(customerMsg.contains("🗺️ *Ubicación en mapa:* https://maps.google.com/?q=12.145678,-86.265432"))
+
+        val driverMsg = RoutingAndFareCalculator.buildDriverWhatsAppDispatch(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente WhatsApp"
+        )
+        org.junit.Assert.assertFalse(driverMsg.contains("congelada", ignoreCase = true))
+        assertTrue(driverMsg.contains("https://maps.google.com/?q=12.145678,-86.265432"))
+    }
 }

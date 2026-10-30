@@ -6,6 +6,7 @@ import com.rapiflete.delivery.model.LocationSourceType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
+import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
@@ -94,7 +95,7 @@ object LocationParserAndFreezer {
             if (coord != null) {
                 return buildFrozen(
                     coord = coord,
-                    label = extractCustomLabel(decodedText) ?: "Ubicación de WhatsApp congelada",
+                    label = extractCustomLabel(decodedText) ?: "Ubicación de WhatsApp",
                     raw = trimmed,
                     sourceType = LocationSourceType.WHATSAPP_SHARE
                 )
@@ -107,7 +108,7 @@ object LocationParserAndFreezer {
             if (coord != null) {
                 return buildFrozen(
                     coord = coord,
-                    label = extractCustomLabel(decodedText) ?: "Ubicación en tiempo real congelada",
+                    label = extractCustomLabel(decodedText) ?: "Ubicación en tiempo real",
                     raw = trimmed,
                     sourceType = LocationSourceType.WHATSAPP_SHARE
                 )
@@ -120,7 +121,7 @@ object LocationParserAndFreezer {
             if (coord != null) {
                 return buildFrozen(
                     coord = coord,
-                    label = "Pin de mapa congelado",
+                    label = "Punto en mapa",
                     raw = trimmed,
                     sourceType = LocationSourceType.WHATSAPP_SHARE
                 )
@@ -133,7 +134,7 @@ object LocationParserAndFreezer {
             if (coord != null) {
                 return buildFrozen(
                     coord = coord,
-                    label = extractCustomLabel(decodedText) ?: "Ubicación de Maps (@lat,lng)",
+                    label = extractCustomLabel(decodedText) ?: "Ubicación de Google Maps",
                     raw = trimmed,
                     sourceType = LocationSourceType.WHATSAPP_SHARE
                 )
@@ -161,7 +162,7 @@ object LocationParserAndFreezer {
                 val isFromUrl = decodedText.contains("http", ignoreCase = true)
                 return buildFrozen(
                     coord = coord,
-                    label = if (isFromUrl) "Ubicación compartida congelada" else "Coordenadas (${coord.format(5)})",
+                    label = if (isFromUrl) "Ubicación compartida" else "Punto en mapa (${coord.format(5)})",
                     raw = trimmed,
                     sourceType = if (isFromUrl) LocationSourceType.WHATSAPP_SHARE else LocationSourceType.COORDINATES
                 )
@@ -170,6 +171,11 @@ object LocationParserAndFreezer {
 
         return null
     }
+
+data class ReverseGeocodeResult(
+    val formattedLabel: String?,
+    val townOrMunicipality: String? = null
+)
 
     /**
      * Resuelve cualquier entrada: enlaces cortos (maps.app.goo.gl / goo.gl), enlaces de WhatsApp,
@@ -188,7 +194,16 @@ object LocationParserAndFreezer {
         // Paso 1: Intentar extracción directa o Plus Code sin depender de red
         // (Si NO es un link corto maps.app.goo.gl sin coordenadas visibles)
         parseDirectOrPlusCode(trimmed, referenceLat, referenceLng)?.let { direct ->
-            return@withContext Result.success(direct)
+            val reverse = reverseGeocodeWithNominatim(direct.coordinate.latitude, direct.coordinate.longitude)
+            val enriched = if (reverse != null) {
+                direct.copy(
+                    label = reverse.formattedLabel ?: direct.label,
+                    detectedZoneMunicipality = reverse.townOrMunicipality
+                )
+            } else {
+                direct
+            }
+            return@withContext Result.success(enriched)
         }
 
         // Paso 2: Si contiene una URL (ej. https://maps.app.goo.gl/mv39EgWrVBGNy1GJ7), resolver redirecciones HTTP
@@ -196,7 +211,16 @@ object LocationParserAndFreezer {
         if (urlMatch != null) {
             val resolvedFromUrl = resolveShortMapsUrl(urlMatch, referenceLat, referenceLng)
             if (resolvedFromUrl != null) {
-                return@withContext Result.success(resolvedFromUrl)
+                val reverse = reverseGeocodeWithNominatim(resolvedFromUrl.coordinate.latitude, resolvedFromUrl.coordinate.longitude)
+                val enriched = if (reverse != null) {
+                    resolvedFromUrl.copy(
+                        label = reverse.formattedLabel ?: resolvedFromUrl.label,
+                        detectedZoneMunicipality = reverse.townOrMunicipality
+                    )
+                } else {
+                    resolvedFromUrl
+                }
+                return@withContext Result.success(enriched)
             }
         }
 
@@ -213,6 +237,63 @@ object LocationParserAndFreezer {
         )
     }
 
+    suspend fun reverseGeocodeWithNominatim(
+        lat: Double,
+        lng: Double
+    ): ReverseGeocodeResult? = withContext(Dispatchers.IO) {
+        val urlString = "https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lng&zoom=18&addressdetails=1"
+        try {
+            val conn = (URL(urlString).openConnection() as HttpURLConnection).apply {
+                connectTimeout = 4000
+                readTimeout = 4000
+                setRequestProperty("User-Agent", "ColorShopDeliveryApp/1.0 (Android; Managua)")
+                setRequestProperty("Accept-Language", "es")
+            }
+            if (conn.responseCode == 200) {
+                val body = conn.inputStream.bufferedReader().use { it.readText() }
+                conn.disconnect()
+                val json = JSONObject(body)
+                val addressObj = json.optJSONObject("address")
+                val displayName = json.optString("display_name", "")
+
+                val road = addressObj?.optString("road", "")?.trim() ?: ""
+                val neighbourhood = addressObj?.optString("neighbourhood", "")?.trim() ?: ""
+                val suburb = addressObj?.optString("suburb", "")?.trim() ?: ""
+                val residential = addressObj?.optString("residential", "")?.trim() ?: ""
+                val town = addressObj?.optString("town", "")?.trim() ?: ""
+                val municipality = addressObj?.optString("municipality", "")?.trim() ?: ""
+                val city = addressObj?.optString("city", "")?.trim() ?: ""
+                val region = addressObj?.optString("region", "")?.trim() ?: ""
+
+                val primaryName = listOf(road, residential, neighbourhood, suburb).firstOrNull { it.isNotBlank() }
+                val secondaryName = listOf(neighbourhood, suburb, region, town, municipality, city).firstOrNull { it.isNotBlank() && it != primaryName }
+
+                val formattedLabel = when {
+                    !primaryName.isNullOrBlank() && !secondaryName.isNullOrBlank() -> "$primaryName, $secondaryName"
+                    !primaryName.isNullOrBlank() -> primaryName
+                    displayName.isNotBlank() -> displayName.split(",").take(2).joinToString(",").trim()
+                    else -> null
+                }
+
+                val detectedTown = when {
+                    town.isNotBlank() -> town
+                    municipality.isNotBlank() -> municipality
+                    city.isNotBlank() -> city
+                    else -> null
+                }
+
+                return@withContext ReverseGeocodeResult(
+                    formattedLabel = formattedLabel,
+                    townOrMunicipality = detectedTown
+                )
+            }
+            conn.disconnect()
+            null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     private fun resolveShortMapsUrl(
         initialUrl: String,
         referenceLat: Double,
@@ -225,7 +306,7 @@ object LocationParserAndFreezer {
             while (redirectsLeft > 0) {
                 parseDirectOrPlusCode(currentUrl, referenceLat, referenceLng)?.let { parsed ->
                     return parsed.copy(
-                        label = if (parsed.label.startsWith("Ubicación")) "Enlace Maps congelado" else parsed.label,
+                        label = if (parsed.label.startsWith("Ubicación")) "Ubicación de Google Maps" else parsed.label,
                         sourceRawText = initialUrl,
                         sourceType = LocationSourceType.SHORT_LINK
                     )
@@ -294,7 +375,7 @@ object LocationParserAndFreezer {
 
                     parseDirectOrPlusCode(bodySnippet, referenceLat, referenceLng)?.let { parsed ->
                         return parsed.copy(
-                            label = "Enlace de Google Maps congelado",
+                            label = "Ubicación de Google Maps",
                             sourceRawText = initialUrl,
                             sourceType = LocationSourceType.SHORT_LINK
                         )

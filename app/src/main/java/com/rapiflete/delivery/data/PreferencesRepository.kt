@@ -15,6 +15,7 @@ import com.rapiflete.delivery.model.StoreAndPricingConfig
 import com.rapiflete.delivery.model.SurchargeType
 import org.json.JSONArray
 import org.json.JSONObject
+import java.util.Locale
 
 class PreferencesRepository(context: Context) {
 
@@ -188,7 +189,17 @@ class PreferencesRepository(context: Context) {
                     )
                 )
             }
-            list
+            val existingNames = list.map { it.name.lowercase(Locale.ROOT) }
+            val missingDefaults = defaultZones().filter { defaultZ ->
+                !existingNames.any { it.contains(defaultZ.name.lowercase(Locale.ROOT)) }
+            }
+            if (missingDefaults.isNotEmpty()) {
+                val merged = list + missingDefaults
+                saveZones(merged)
+                merged
+            } else {
+                list
+            }
         } catch (_: Exception) {
             defaultZones()
         }
@@ -332,7 +343,14 @@ class PreferencesRepository(context: Context) {
             name = "Ticuantepe",
             iconEmoji = "🌲",
             basePrice = 120.0,
-            appliesExtraKm = true
+            appliesExtraKm = false
+        ),
+        SpecialZoneRule(
+            id = "z3",
+            name = "Tipitapa",
+            iconEmoji = "🏭",
+            basePrice = 120.0,
+            appliesExtraKm = false
         )
     )
 

@@ -674,7 +674,8 @@ fun CalculatorScreen(
                                 ActiveMiniBadge("🌧️ Lluvia")
                             }
                             uiState.selectedZone?.let { z ->
-                                ActiveMiniBadge("📍 ${z.name}")
+                                val autoLabel = if (uiState.isZoneAutoDetected) "📍 Zona auto: ${z.name} ($cur${z.basePrice.toInt()})" else "📍 ${z.name} ($cur${z.basePrice.toInt()})"
+                                ActiveMiniBadge(autoLabel)
                             }
                         }
                     }
@@ -1249,7 +1250,7 @@ fun CalculatorScreen(
                                 )
                                 copyToClipboard(context, "Despacho ColorShop", dispatchText)
                                 if (cfg.defaultShareFormat == ShareOutputFormat.IMAGE_RECEIPT) {
-                                    val bitmap = ReceiptImageGenerator.generateCustomerReceiptBitmap(
+                                    val bitmap = ReceiptImageGenerator.generateDriverDispatchBitmap(
                                         config = cfg,
                                         destination = dest,
                                         quote = quote,

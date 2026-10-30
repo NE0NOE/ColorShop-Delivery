@@ -20,6 +20,7 @@ import com.rapiflete.delivery.model.StoreAndPricingConfig
 import com.rapiflete.delivery.model.TransferBankType
 import com.rapiflete.delivery.util.LocationParserAndFreezer
 import com.rapiflete.delivery.util.RoutingAndFareCalculator
+import com.rapiflete.delivery.util.ZoneDetector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -49,6 +50,7 @@ data class DeliveryUiState(
     val manualAdjustment: Double = 0.0,
     val customTotalOverride: Double? = null,
     val selectedZone: SpecialZoneRule? = null,
+    val isZoneAutoDetected: Boolean = false,
     val selectedPaymentMethod: PaymentMethodType = PaymentMethodType.CASH,
     val selectedTransferBank: TransferBankType = TransferBankType.BAC,
     val couriers: List<CourierDriver> = emptyList(),
@@ -200,7 +202,7 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
 
     fun selectSpecialZone(zone: SpecialZoneRule?) {
         _uiState.update { state ->
-            state.copy(selectedZone = zone, customTotalOverride = null).recalculateQuote()
+            state.copy(selectedZone = zone, isZoneAutoDetected = false, customTotalOverride = null).recalculateQuote()
         }
     }
 
@@ -386,9 +388,9 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
 
     fun onMapDestinationSelected(lat: Double, lng: Double, freezeImmediately: Boolean = true) {
         val coord = GeoCoordinate(lat, lng)
-        val newDest = FrozenDestination(
+        val initialDest = FrozenDestination(
             coordinate = coord,
-            label = "Ubicación seleccionada en Managua",
+            label = "Punto seleccionado en mapa",
             sourceRawText = coord.format(6),
             capturedAtTime = LocationParserAndFreezer.currentTimeFormatted(),
             isFrozen = freezeImmediately,
@@ -397,9 +399,21 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
 
         viewModelScope.launch {
             computeRouteAndQuoteForDestination(
-                destination = newDest,
+                destination = initialDest,
                 bannerMsg = null
             )
+            // Intentar enriquecer nombre de lugar en segundo plano con geocodificación inversa
+            val reverse = LocationParserAndFreezer.reverseGeocodeWithNominatim(lat, lng)
+            if (reverse?.formattedLabel != null) {
+                val updatedDest = initialDest.copy(
+                    label = reverse.formattedLabel,
+                    detectedZoneMunicipality = reverse.townOrMunicipality
+                )
+                computeRouteAndQuoteForDestination(
+                    destination = updatedDest,
+                    bannerMsg = null
+                )
+            }
         }
     }
 
@@ -636,7 +650,25 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             straightLineFactor = cfg.straightLineFactor
         )
 
-        val effectiveConfig = stateSnapshot.selectedZone?.let { zone ->
+        // Detección automática de zonas aledañas (Ciudad Sandino, Ticuantepe, Tipitapa, etc.)
+        val autoDetectedZone = ZoneDetector.detectZone(
+            coord = destination.coordinate,
+            addressText = destination.label,
+            availableZones = stateSnapshot.zones,
+            townOrMunicipality = destination.detectedZoneMunicipality
+        )
+
+        val activeZone = if (autoDetectedZone != null) {
+            autoDetectedZone
+        } else if (stateSnapshot.isZoneAutoDetected) {
+            // Si la zona anterior fue detectada automáticamente y el nuevo destino está dentro de Managua,
+            // restaurar automáticamente a tarifa normal de Managua
+            null
+        } else {
+            stateSnapshot.selectedZone
+        }
+
+        val effectiveConfig = activeZone?.let { zone ->
             cfg.copy(
                 minimumFare = zone.basePrice,
                 costPerExtraKm = if (zone.appliesExtraKm) cfg.costPerExtraKm else 0.0
@@ -652,7 +684,7 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             applyRainOrDemand = stateSnapshot.applyRainOrDemand,
             manualExtraAdjustment = stateSnapshot.manualAdjustment
         ).copy(
-            selectedZoneName = stateSnapshot.selectedZone?.name,
+            selectedZoneName = activeZone?.name,
             customTotalOverride = null
         )
 
@@ -674,6 +706,8 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
         _uiState.update {
             it.copy(
                 frozenDestination = destination,
+                selectedZone = activeZone,
+                isZoneAutoDetected = autoDetectedZone != null,
                 routeResult = route,
                 quoteBreakdown = quote,
                 customTotalOverride = null,
