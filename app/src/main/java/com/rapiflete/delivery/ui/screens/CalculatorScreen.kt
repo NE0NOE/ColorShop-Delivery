@@ -1,5 +1,6 @@
 package com.rapiflete.delivery.ui.screens
 
+import android.app.TimePickerDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -10,6 +11,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,6 +22,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -46,10 +49,13 @@ import androidx.compose.material.icons.filled.CompassCalibration
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.NearMe
 import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
@@ -116,6 +122,8 @@ import com.rapiflete.delivery.util.RoutingAndFareCalculator
 import com.rapiflete.delivery.viewmodel.DeliveryUiState
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.roundToInt
@@ -146,7 +154,10 @@ fun CalculatorScreen(
     onSelectCourier: (CourierDriver) -> Unit,
     onSelectPaymentMethod: (PaymentMethodType) -> Unit,
     onSelectTransferBank: (TransferBankType) -> Unit,
+    onSetPaymentPendingOnDelivery: (Boolean) -> Unit = {},
     onSaveToHistory: () -> Unit,
+    onClearQuoteAndInputs: () -> Unit = {},
+    onDismissErrorMessage: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onApplyPreferentialRate: (Double?) -> Unit = {},
     onDismissPreferentialDialog: () -> Unit = {},
@@ -155,9 +166,9 @@ fun CalculatorScreen(
     val context = LocalContext.current
     val scrollState = rememberScrollState()
 
-    var showSearchBarOverlay by remember { mutableStateOf(false) }
     var showAjustesBottomSheet by remember { mutableStateOf(false) }
     var showEditPriceDialog by remember { mutableStateOf(false) }
+    var showDuplicateConfirmDialog by remember { mutableStateOf(false) }
     var showOrderDetailsExpanded by remember { mutableStateOf(true) }
     var zoomTrigger by remember { mutableIntStateOf(0) }
     var resetNorthTrigger by remember { mutableIntStateOf(0) }
@@ -173,31 +184,87 @@ fun CalculatorScreen(
         }
     }
 
+    val cfg = uiState.config
+    val quote = uiState.quoteBreakdown
+    val dest = uiState.frozenDestination
+
+    val executeDispatch: (Boolean) -> Unit = { saveToHistory ->
+        if (quote != null && dest != null) {
+            if (saveToHistory) {
+                onSaveToHistory()
+                Toast.makeText(context, "✅ Pedido guardado en historial (En Ruta)", Toast.LENGTH_SHORT).show()
+            }
+            val dispatchText = RoutingAndFareCalculator.buildDriverWhatsAppDispatch(
+                config = cfg,
+                destination = dest,
+                quote = quote,
+                customerNote = uiState.customerNote,
+                customerPhone = uiState.customerPhone,
+                orderComments = uiState.orderComments,
+                approximateDeliveryTime = uiState.approximateDeliveryTime,
+                productAmount = uiState.productAmount,
+                paymentMethod = uiState.selectedPaymentMethod,
+                transferBank = uiState.selectedTransferBank,
+                courier = uiState.selectedCourier,
+                isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery
+            )
+            copyToClipboard(context, "Despacho ColorShop", dispatchText)
+            if (cfg.defaultShareFormat == ShareOutputFormat.IMAGE_RECEIPT) {
+                val bitmap = ReceiptImageGenerator.generateDriverDispatchBitmap(
+                    config = cfg,
+                    destination = dest,
+                    quote = quote,
+                    customerNote = uiState.customerNote,
+                    customerPhone = uiState.customerPhone,
+                    orderComments = uiState.orderComments,
+                    approximateDeliveryTime = uiState.approximateDeliveryTime,
+                    courier = uiState.selectedCourier,
+                    paymentMethod = uiState.selectedPaymentMethod,
+                    transferBank = uiState.selectedTransferBank,
+                    productAmount = uiState.productAmount,
+                    orderStatus = OrderStatus.EN_RUTA,
+                    isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery
+                )
+                val imageUri = ReceiptImageGenerator.saveBitmapToShareCache(
+                    context,
+                    bitmap,
+                    "despacho_delivery"
+                )
+                ReceiptImageGenerator.shareReceiptImage(context, imageUri, dispatchText)
+            } else {
+                shareTextToWhatsAppOrChooser(context, dispatchText)
+            }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(ColorShopSurface)
             .verticalScroll(scrollState)
     ) {
-        // 1. Barra Superior Oficial de ColorShop Delivery (con botón de lupa para buscar dirección en Managua o pegar link)
+        // 1. Barra Superior Oficial de ColorShop Delivery
         ColorShopTopBar(
-            showQuickSearchButton = true,
-            onQuickSearchClick = { showSearchBarOverlay = !showSearchBarOverlay }
+            showQuickSearchButton = false
         )
 
-        // Buscador limpio al tocar la lupa (priorizando el departamento de Managua)
-        AnimatedVisibility(visible = showSearchBarOverlay) {
-            Surface(
-                color = Color.White,
-                shadowElevation = 6.dp,
-                shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
-                modifier = Modifier.fillMaxWidth()
+        // Barra de búsqueda y pegado de ubicación siempre visible
+        Surface(
+            color = Color.White,
+            shadowElevation = 4.dp,
+            shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -208,7 +275,7 @@ fun CalculatorScreen(
                             shape = RoundedCornerShape(50)
                         ) {
                             Text(
-                                text = "📍 Managua (Departamento)",
+                                text = "📍 Managua",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = ColorShopPrimary,
@@ -216,88 +283,166 @@ fun CalculatorScreen(
                             )
                         }
                         Text(
-                            text = "Búsqueda predefinida en Managua, Nicaragua",
+                            text = "Buscar dirección o pegar enlace de WhatsApp/Maps",
                             fontSize = 11.sp,
-                            color = ColorShopMutedPlum
+                            color = ColorShopMutedPlum,
+                            maxLines = 1
                         )
                     }
+                }
 
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = uiState.inputLinkOrText,
+                        onValueChange = onInputChanged,
+                        placeholder = {
+                            Text(
+                                "Barrio, calle, Plus Code o enlace...",
+                                fontSize = 12.sp,
+                                maxLines = 1
+                            )
+                        },
+                        singleLine = true,
+                        shape = RoundedCornerShape(50),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        keyboardActions = KeyboardActions(
+                            onSearch = {
+                                if (uiState.inputLinkOrText.isNotBlank()) {
+                                    onFreezeInputLocation(uiState.inputLinkOrText)
+                                }
+                            }
+                        ),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ColorShopPrimary,
+                            unfocusedBorderColor = ColorShopSurfaceHigh,
+                            focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                            unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                        ),
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = ColorShopPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        },
+                        trailingIcon = {
+                            if (uiState.isLoadingRouteOrLink) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp,
+                                    color = ColorShopPrimary
+                                )
+                            } else if (uiState.inputLinkOrText.isNotBlank()) {
+                                IconButton(
+                                    onClick = { onInputChanged("") },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Limpiar",
+                                        tint = ColorShopMutedPlum,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Button(
+                        onClick = {
+                            if (uiState.inputLinkOrText.isNotBlank()) {
+                                onFreezeInputLocation(uiState.inputLinkOrText)
+                            }
+                        },
+                        enabled = uiState.inputLinkOrText.isNotBlank(),
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                        modifier = Modifier.height(44.dp)
+                    ) {
+                        Text("Buscar", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                            val clipData = clipboard?.primaryClip
+                            val clipText = if (clipData != null && clipData.itemCount > 0) {
+                                clipData.getItemAt(0)?.text?.toString()?.trim()
+                            } else null
+
+                            if (!clipText.isNullOrBlank()) {
+                                onInputChanged(clipText)
+                                onFreezeInputLocation(clipText)
+                                Toast.makeText(context, "📋 Ubicación pegada del portapapeles", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "El portapapeles no tiene texto o enlace copiado", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = ColorShopPinkPill,
+                            contentColor = ColorShopPrimary
+                        ),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                        modifier = Modifier
+                            .height(44.dp)
+                            .border(1.dp, ColorShopPrimary.copy(alpha = 0.3f), RoundedCornerShape(50))
+                    ) {
+                        Text("📋 Pegar", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+
+        // Banner de error claro y visible cuando uiState.errorMessage != null
+        if (uiState.errorMessage != null) {
+            Surface(
+                color = Color(0xFFFFEBEE),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFFEF9A9A)),
+                shadowElevation = 2.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        OutlinedTextField(
-                            value = uiState.inputLinkOrText,
-                            onValueChange = onInputChanged,
-                            placeholder = {
-                                Text(
-                                    "Barrio, calle o lugar en Managua...",
-                                    fontSize = 13.sp
-                                )
-                            },
-                            singleLine = true,
-                            shape = RoundedCornerShape(50),
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                            keyboardActions = KeyboardActions(
-                                onSearch = {
-                                    if (uiState.inputLinkOrText.isNotBlank()) {
-                                        onFreezeInputLocation(uiState.inputLinkOrText)
-                                        showSearchBarOverlay = false
-                                    }
-                                }
-                            ),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ColorShopPrimary,
-                                unfocusedBorderColor = ColorShopSurfaceHigh,
-                                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
-                                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
-                            ),
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Search,
-                                    contentDescription = null,
-                                    tint = ColorShopPrimary,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            },
-                            trailingIcon = {
-                                if (uiState.isLoadingRouteOrLink) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(18.dp),
-                                        strokeWidth = 2.dp,
-                                        color = ColorShopPrimary
-                                    )
-                                } else if (uiState.inputLinkOrText.isNotBlank()) {
-                                    IconButton(
-                                        onClick = { onInputChanged("") },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "Limpiar",
-                                            tint = ColorShopMutedPlum,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                            },
-                            modifier = Modifier.weight(1f)
+                        Text("⚠️", fontSize = 18.sp)
+                        Text(
+                            text = uiState.errorMessage ?: "",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFC62828),
+                            lineHeight = 16.sp
                         )
-
-                        Button(
-                            onClick = {
-                                if (uiState.inputLinkOrText.isNotBlank()) {
-                                    onFreezeInputLocation(uiState.inputLinkOrText)
-                                    showSearchBarOverlay = false
-                                }
-                            },
-                            enabled = uiState.inputLinkOrText.isNotBlank(),
-                            shape = RoundedCornerShape(50),
-                            colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary)
-                        ) {
-                            Text("Buscar", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                        }
+                    }
+                    IconButton(
+                        onClick = onDismissErrorMessage,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cerrar advertencia",
+                            tint = Color(0xFFC62828),
+                            modifier = Modifier.size(18.dp)
+                        )
                     }
                 }
             }
@@ -327,6 +472,38 @@ fun CalculatorScreen(
                 onMapLongPressFreeze = onMapLongPressFreeze,
                 modifier = Modifier.fillMaxSize()
             )
+
+            // Pill flotante de bloqueo/desbloqueo de pin sobre el mapa
+            if (uiState.frozenDestination != null) {
+                val isFrozen = uiState.frozenDestination.isFrozen
+                Surface(
+                    color = Color.White.copy(alpha = 0.95f),
+                    shape = RoundedCornerShape(50),
+                    shadowElevation = 5.dp,
+                    border = BorderStroke(
+                        1.dp,
+                        if (isFrozen) ColorShopPrimary else Color(0xFFFF9800)
+                    ),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 14.dp, top = 14.dp)
+                        .clip(RoundedCornerShape(50))
+                        .clickable { onToggleFreezeLock() }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Text(
+                            text = if (isFrozen) "🔒 Destino Congelado" else "🔓 Desbloqueado",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isFrozen) ColorShopPrimary else Color(0xFFE65100)
+                        )
+                    }
+                }
+            }
 
             // Controles derechos del mapa (Pill vertical + / - / Norte y Botón "Ajustes" magenta de Stitch)
             Column(
@@ -452,6 +629,74 @@ fun CalculatorScreen(
                         .background(ColorShopSurfaceHigh)
                         .align(Alignment.CenterHorizontally)
                 )
+
+                // Fila de encabezado: Estado de Destino y Botón "Nueva Cotización / Limpiar"
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (dest != null) {
+                        Surface(
+                            color = if (dest.isFrozen) ColorShopPrimary.copy(alpha = 0.10f) else Color(0xFFFFF3E0),
+                            shape = RoundedCornerShape(50),
+                            border = BorderStroke(
+                                1.dp,
+                                if (dest.isFrozen) ColorShopPrimary.copy(alpha = 0.35f) else Color(0xFFFF9800)
+                            ),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable { onToggleFreezeLock() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = if (dest.isFrozen) "🔒 Destino Congelado" else "🔓 Desbloqueado",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (dest.isFrozen) ColorShopPrimary else Color(0xFFE65100)
+                                )
+                            }
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.width(1.dp))
+                    }
+
+                    // Botón 'Limpiar / Nueva Cotización'
+                    Surface(
+                        color = ColorShopSurfaceLow,
+                        shape = RoundedCornerShape(50),
+                        border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.25f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable {
+                                onClearQuoteAndInputs()
+                                Toast.makeText(context, "✨ Cotización restablecida para nuevo despacho", Toast.LENGTH_SHORT).show()
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                tint = ColorShopPrimary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = "Nueva Cotización",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopPrimary
+                            )
+                        }
+                    }
+                }
 
                 if (quote != null && dest != null) {
                     val displayedTotal = quote.effectiveTotal
@@ -732,29 +977,6 @@ fun CalculatorScreen(
                             }
                         }
                     }
-
-                    // Resumen de liquidación para el conductor según método de pago
-                    val settlementPreview = RoutingAndFareCalculator.buildDriverSettlementNote(
-                        paymentMethod = uiState.selectedPaymentMethod,
-                        transferBank = uiState.selectedTransferBank,
-                        productAmount = uiState.productAmount,
-                        deliveryFee = quote.effectiveTotal,
-                        currencySymbol = cur
-                    )
-                    Surface(
-                        color = ColorShopSurfaceLow.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, ColorShopPrimary.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                    ) {
-                        Text(
-                            text = settlementPreview,
-                            fontSize = 10.sp,
-                            color = ColorShopDeepPlum,
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
-                        )
-                    }
                 } else {
                     // Estado inicial limpio (sin cliente de destino predefinido)
                     Row(
@@ -929,7 +1151,33 @@ fun CalculatorScreen(
                                         label = { Text("Hora aprox.", fontSize = 11.sp) },
                                         placeholder = { Text("Ej. 3:30 PM", fontSize = 12.sp) },
                                         leadingIcon = {
-                                            Icon(Icons.Default.AccessTime, contentDescription = null, tint = ColorShopPrimary, modifier = Modifier.size(16.dp))
+                                            IconButton(
+                                                onClick = {
+                                                    val cal = Calendar.getInstance()
+                                                    TimePickerDialog(
+                                                        context,
+                                                        { _, hourOfDay, minute ->
+                                                            val pickedCal = Calendar.getInstance().apply {
+                                                                set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                                                set(Calendar.MINUTE, minute)
+                                                            }
+                                                            val sdf = SimpleDateFormat("hh:mm a", Locale.US)
+                                                            onApproximateDeliveryTimeChanged(sdf.format(pickedCal.time))
+                                                        },
+                                                        cal.get(Calendar.HOUR_OF_DAY),
+                                                        cal.get(Calendar.MINUTE),
+                                                        false
+                                                    ).show()
+                                                },
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.AccessTime,
+                                                    contentDescription = "Abrir reloj",
+                                                    tint = ColorShopPrimary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
                                         },
                                         singleLine = true,
                                         shape = RoundedCornerShape(14.dp),
@@ -941,6 +1189,100 @@ fun CalculatorScreen(
                                         ),
                                         modifier = Modifier.weight(1f)
                                     )
+                                }
+
+                                // Chips de Selección Rápida de Hora Estimada
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "Hora rápida:",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopMutedPlum
+                                    )
+                                    val quickIntervals = listOf(
+                                        "En 30 min" to 30,
+                                        "En 45 min" to 45,
+                                        "En 1 hr" to 60
+                                    )
+                                    quickIntervals.forEach { (label, mins) ->
+                                        val cal = Calendar.getInstance()
+                                        cal.add(Calendar.MINUTE, mins)
+                                        val targetTime = SimpleDateFormat("hh:mm a", Locale.US).format(cal.time)
+                                        val isSelected = uiState.approximateDeliveryTime.startsWith(label)
+
+                                        Surface(
+                                            color = if (isSelected) ColorShopPrimary else ColorShopSurfaceLow,
+                                            shape = RoundedCornerShape(50),
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (isSelected) ColorShopPrimary else ColorShopSurfaceHigh
+                                            ),
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(50))
+                                                .clickable {
+                                                    onApproximateDeliveryTimeChanged("$label (~$targetTime)")
+                                                }
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (isSelected) Color.White else ColorShopDeepPlum,
+                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                            )
+                                        }
+                                    }
+
+                                    // Chip para abrir TimePickerDialog nativo
+                                    Surface(
+                                        color = ColorShopPinkPill,
+                                        shape = RoundedCornerShape(50),
+                                        border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.35f)),
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(50))
+                                            .clickable {
+                                                val cal = Calendar.getInstance()
+                                                TimePickerDialog(
+                                                    context,
+                                                    { _, hourOfDay, minute ->
+                                                        val pickedCal = Calendar.getInstance().apply {
+                                                            set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                                            set(Calendar.MINUTE, minute)
+                                                        }
+                                                        val sdf = SimpleDateFormat("hh:mm a", Locale.US)
+                                                        onApproximateDeliveryTimeChanged(sdf.format(pickedCal.time))
+                                                    },
+                                                    cal.get(Calendar.HOUR_OF_DAY),
+                                                    cal.get(Calendar.MINUTE),
+                                                    false
+                                                ).show()
+                                            }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.AccessTime,
+                                                contentDescription = null,
+                                                tint = ColorShopPrimary,
+                                                modifier = Modifier.size(13.dp)
+                                            )
+                                            Text(
+                                                text = "Reloj 🕒",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ColorShopPrimary
+                                            )
+                                        }
+                                    }
                                 }
 
                                 // Total de Productos / Mercadería por separado
@@ -1043,6 +1385,185 @@ fun CalculatorScreen(
                                 }
                             }
                         }
+                    }
+                }
+
+                // 4. Selector de Forma de Pago y Banco directamente en la tarjeta principal
+                Surface(
+                    color = Color.White,
+                    shape = RoundedCornerShape(18.dp),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(18.dp))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Forma de Pago del Pedido:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopDeepPlum
+                            )
+                            Text(
+                                text = uiState.selectedPaymentMethod.badgeLabel,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopPrimary
+                            )
+                        }
+
+                        // Chips: Efectivo, Transferencia, POS Tarjeta
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            PaymentMethodType.entries.forEach { method ->
+                                val isSelected = uiState.selectedPaymentMethod == method
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { onSelectPaymentMethod(method) },
+                                    label = { Text(method.badgeLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    modifier = Modifier.weight(1f),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = ColorShopMagenta,
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                            }
+                        }
+
+                        // Si es Transferencia, mostrar los bancos (BAC, Lafise, Banpro, Ficohsa)
+                        if (uiState.selectedPaymentMethod == PaymentMethodType.TRANSFER) {
+                            HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
+                            Text(
+                                text = "Banco receptor para la transferencia:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = ColorShopMutedPlum
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                TransferBankType.entries.forEach { bank ->
+                                    val isSelected = uiState.selectedTransferBank == bank
+                                    FilterChip(
+                                        selected = isSelected,
+                                        onClick = { onSelectTransferBank(bank) },
+                                        label = { Text("🏦 ${bank.displayName}", fontSize = 11.sp) },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = ColorShopPrimary,
+                                            selectedLabelColor = Color.White
+                                        )
+                                    )
+                                }
+                            }
+
+                            HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
+                            Text(
+                                text = "Momento del pago / Depósito:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = ColorShopMutedPlum
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                FilterChip(
+                                    selected = !uiState.isPaymentPendingOnDelivery,
+                                    onClick = { onSetPaymentPendingOnDelivery(false) },
+                                    label = { Text("✅ Ya Acreditada (C$ 0 al recibir)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color(0xFF2E7D32),
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                                FilterChip(
+                                    selected = uiState.isPaymentPendingOnDelivery,
+                                    onClick = { onSetPaymentPendingOnDelivery(true) },
+                                    label = { Text("⏳ Transferir al Recibir (Contra Entrega)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color(0xFFE65100),
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                            }
+                        }
+
+                        // Si es POS Datáfono
+                        if (uiState.selectedPaymentMethod == PaymentMethodType.POS) {
+                            HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
+                            Text(
+                                text = "Cobro con Datáfono POS:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = ColorShopMutedPlum
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                FilterChip(
+                                    selected = uiState.isPaymentPendingOnDelivery,
+                                    onClick = { onSetPaymentPendingOnDelivery(true) },
+                                    label = { Text("💳 Cobrar con POS al Entregar", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color(0xFFE65100),
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                                FilterChip(
+                                    selected = !uiState.isPaymentPendingOnDelivery,
+                                    onClick = { onSetPaymentPendingOnDelivery(false) },
+                                    label = { Text("✅ Ya Cobrado en Tienda", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = Color(0xFF2E7D32),
+                                        selectedLabelColor = Color.White
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Resumen de liquidación para el conductor según método de pago y banco
+                if (quote != null) {
+                    val settlementPreview = RoutingAndFareCalculator.buildDriverSettlementNote(
+                        paymentMethod = uiState.selectedPaymentMethod,
+                        transferBank = uiState.selectedTransferBank,
+                        productAmount = uiState.productAmount,
+                        deliveryFee = quote.effectiveTotal,
+                        currencySymbol = cur,
+                        isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery
+                    )
+                    Surface(
+                        color = ColorShopSurfaceLow.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, ColorShopPrimary.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                    ) {
+                        Text(
+                            text = settlementPreview,
+                            fontSize = 10.sp,
+                            color = ColorShopDeepPlum,
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                        )
                     }
                 }
 
@@ -1150,13 +1671,13 @@ fun CalculatorScreen(
                     }
                 }
 
-                // Botones Gemelos de Acción (Cliente | Delivery)
+                // Botones Gemelos de Acción (Cotizar a Cliente | Despachar Pedido)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     val hasDestination = quote != null && dest != null
-                    // Botón 1: Cliente (#FFEBF3 bg, #8C1D74 text con icono de Mariposa)
+                    // Botón 1: Cotizar a Cliente (#FFEBF3 bg, #8C1D74 text con icono de Mariposa)
                     Button(
                         onClick = {
                             if (quote != null && dest != null) {
@@ -1171,7 +1692,8 @@ fun CalculatorScreen(
                                     courier = uiState.selectedCourier,
                                     paymentMethod = uiState.selectedPaymentMethod,
                                     transferBank = uiState.selectedTransferBank,
-                                    productAmount = uiState.productAmount
+                                    productAmount = uiState.productAmount,
+                                    isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery
                                 )
                                 copyToClipboard(context, "Cotización ColorShop", summary)
                                 if (cfg.defaultShareFormat == ShareOutputFormat.IMAGE_RECEIPT) {
@@ -1187,7 +1709,8 @@ fun CalculatorScreen(
                                         paymentMethod = uiState.selectedPaymentMethod,
                                         transferBank = uiState.selectedTransferBank,
                                         productAmount = uiState.productAmount,
-                                        orderStatus = OrderStatus.EN_RUTA
+                                        orderStatus = OrderStatus.EN_RUTA,
+                                        isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery
                                     )
                                     val imageUri = ReceiptImageGenerator.saveBitmapToShareCache(
                                         context,
@@ -1217,68 +1740,33 @@ fun CalculatorScreen(
                     ) {
                         Icon(
                             painter = painterResource(id = R.drawable.ic_butterfly),
-                            contentDescription = "Cliente",
+                            contentDescription = "Cotizar a Cliente",
                             modifier = Modifier.size(20.dp),
                             tint = Color.Unspecified
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Cliente",
-                            fontSize = 13.sp,
+                            text = "Cotizar a Cliente",
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1
                         )
                     }
 
-                    // Botón 2: Delivery (#A51D89 bg, White text)
+                    // Botón 2: Despachar Pedido (con prevención visual y lógica de duplicados)
+                    val isAlreadyDispatched = uiState.isCurrentQuoteSaved
                     Button(
                         onClick = {
-                            if (quote != null && dest != null) {
-                                onSaveToHistory()
-                                Toast.makeText(context, "✅ Pedido guardado en historial (En Ruta)", Toast.LENGTH_SHORT).show()
-                                val dispatchText = RoutingAndFareCalculator.buildDriverWhatsAppDispatch(
-                                    config = cfg,
-                                    destination = dest,
-                                    quote = quote,
-                                    customerNote = uiState.customerNote,
-                                    customerPhone = uiState.customerPhone,
-                                    orderComments = uiState.orderComments,
-                                    approximateDeliveryTime = uiState.approximateDeliveryTime,
-                                    productAmount = uiState.productAmount,
-                                    paymentMethod = uiState.selectedPaymentMethod,
-                                    transferBank = uiState.selectedTransferBank
-                                )
-                                copyToClipboard(context, "Despacho ColorShop", dispatchText)
-                                if (cfg.defaultShareFormat == ShareOutputFormat.IMAGE_RECEIPT) {
-                                    val bitmap = ReceiptImageGenerator.generateDriverDispatchBitmap(
-                                        config = cfg,
-                                        destination = dest,
-                                        quote = quote,
-                                        customerNote = uiState.customerNote,
-                                        customerPhone = uiState.customerPhone,
-                                        orderComments = uiState.orderComments,
-                                        approximateDeliveryTime = uiState.approximateDeliveryTime,
-                                        courier = uiState.selectedCourier,
-                                        paymentMethod = uiState.selectedPaymentMethod,
-                                        transferBank = uiState.selectedTransferBank,
-                                        productAmount = uiState.productAmount,
-                                        orderStatus = OrderStatus.EN_RUTA
-                                    )
-                                    val imageUri = ReceiptImageGenerator.saveBitmapToShareCache(
-                                        context,
-                                        bitmap,
-                                        "despacho_delivery"
-                                    )
-                                    ReceiptImageGenerator.shareReceiptImage(context, imageUri, dispatchText)
-                                } else {
-                                    shareTextToWhatsAppOrChooser(context, dispatchText)
-                                }
+                            if (isAlreadyDispatched) {
+                                showDuplicateConfirmDialog = true
+                            } else {
+                                executeDispatch(true)
                             }
                         },
                         enabled = hasDestination,
                         shape = RoundedCornerShape(50),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = ColorShopPrimary,
+                            containerColor = if (isAlreadyDispatched) Color(0xFF2E7D32) else ColorShopPrimary,
                             contentColor = Color.White
                         ),
                         modifier = Modifier
@@ -1292,8 +1780,8 @@ fun CalculatorScreen(
                         )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
-                            text = "Delivery",
-                            fontSize = 13.sp,
+                            text = if (isAlreadyDispatched) "✅ Ya Despachado · Reenviar" else "Despachar Pedido",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1
                         )
@@ -1303,6 +1791,58 @@ fun CalculatorScreen(
         }
 
         Spacer(modifier = Modifier.height(80.dp))
+    }
+
+    // Diálogo de confirmación para evitar duplicar registros en historial
+    if (showDuplicateConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showDuplicateConfirmDialog = false },
+            containerColor = Color.White,
+            shape = RoundedCornerShape(24.dp),
+            title = {
+                Text(
+                    text = "Pedido ya despachado",
+                    fontWeight = FontWeight.ExtraBold,
+                    color = ColorShopDeepPlum,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Text(
+                    text = "Este pedido ya fue registrado previamente en el historial durante esta sesión.\n\n¿Deseas reenviar la información al repartidor sin duplicar el registro en el historial, o registrar un nuevo despacho idéntico?",
+                    fontSize = 13.sp,
+                    color = ColorShopDeepPlum,
+                    lineHeight = 18.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDuplicateConfirmDialog = false
+                        executeDispatch(false)
+                    },
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary)
+                ) {
+                    Text("Solo Reenviar WhatsApp", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        onClick = {
+                            showDuplicateConfirmDialog = false
+                            executeDispatch(true)
+                        }
+                    ) {
+                        Text("Registrar Duplicado", color = Color(0xFFC2185B), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    TextButton(onClick = { showDuplicateConfirmDialog = false }) {
+                        Text("Cancelar", color = ColorShopMutedPlum, fontSize = 12.sp)
+                    }
+                }
+            }
+        )
     }
 
     // Diálogo para editar manualmente el monto del envío si llegan a otro acuerdo
@@ -1704,30 +2244,13 @@ fun CalculatorScreen(
                     }
                 }
 
-                // Selección de Repartidor y Método de Pago
+                // Selección de Forma de Cobro
                 Text(
-                    text = "Asignar Repartidor y Forma de Cobro:",
+                    text = "Forma de Cobro del Pedido:",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = ColorShopMutedPlum
                 )
-
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    uiState.couriers.forEach { courier ->
-                        FilterChip(
-                            selected = uiState.selectedCourier?.id == courier.id,
-                            onClick = { onSelectCourier(courier) },
-                            label = { Text("🛵 ${courier.name}") },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = ColorShopPrimary,
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                    }
-                }
 
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1769,6 +2292,68 @@ fun CalculatorScreen(
                                 )
                             )
                         }
+                    }
+
+                    Text(
+                        text = "Momento del pago / Depósito:",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ColorShopMutedPlum
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilterChip(
+                            selected = !uiState.isPaymentPendingOnDelivery,
+                            onClick = { onSetPaymentPendingOnDelivery(false) },
+                            label = { Text("✅ Ya Acreditada (C$ 0 al recibir)") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Color(0xFF2E7D32),
+                                selectedLabelColor = Color.White
+                            )
+                        )
+                        FilterChip(
+                            selected = uiState.isPaymentPendingOnDelivery,
+                            onClick = { onSetPaymentPendingOnDelivery(true) },
+                            label = { Text("⏳ Transferir al Recibir (Contra Entrega)") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Color(0xFFE65100),
+                                selectedLabelColor = Color.White
+                            )
+                        )
+                    }
+                }
+
+                if (uiState.selectedPaymentMethod == PaymentMethodType.POS) {
+                    Text(
+                        text = "Cobro con Datáfono POS:",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ColorShopMutedPlum
+                    )
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilterChip(
+                            selected = uiState.isPaymentPendingOnDelivery,
+                            onClick = { onSetPaymentPendingOnDelivery(true) },
+                            label = { Text("💳 Cobrar con POS al Entregar") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Color(0xFFE65100),
+                                selectedLabelColor = Color.White
+                            )
+                        )
+                        FilterChip(
+                            selected = !uiState.isPaymentPendingOnDelivery,
+                            onClick = { onSetPaymentPendingOnDelivery(false) },
+                            label = { Text("✅ Ya Cobrado en Tienda") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = Color(0xFF2E7D32),
+                                selectedLabelColor = Color.White
+                            )
+                        )
                     }
                 }
 

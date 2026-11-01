@@ -126,6 +126,46 @@ data class FrozenDestination(
     val detectedZoneMunicipality: String? = null
 )
 
+const val DEFAULT_CUSTOMER_MESSAGE_TEMPLATE = """🛵 *COTIZACIÓN DE ENVÍO - {nombre_tienda}*
+👤 *Recibe / Cliente:* {cliente}
+📞 *Teléfono:* {telefono_cliente}
+📍 *Destino:* {direccion}
+🗺️ *Ubicación en mapa:* {ubicacion_maps}
+📏 *Distancia:* {distancia}
+🕒 *Hora aprox. de entrega:* {hora_entrega}
+📝 *Comentarios del pedido:* {comentarios}
+🛵 *Motorizado asignado:* {repartidor}
+📱 *Contacto motorizado:* {telefono_repartidor}
+💳 *Método de pago:* {metodo_pago}
+🏦 *Banco:* {banco}
+────────────────────
+🛍️ *Total Productos / Mercadería:* {mercaderia}
+{tarifa_envio}
+────────────────────
+💰 *{total}*
+⏰ *Horarios de atención:* {horarios_atencion}"""
+
+const val DEFAULT_DRIVER_DISPATCH_TEMPLATE = """📦 *DESPACHO DE ENVÍO - COLORSHOP DELIVERY*
+👤 *Recibe / Cliente:* {cliente}
+📞 *Teléfono cliente:* {telefono_cliente}
+🕒 *Hora aprox. de entrega:* {hora_entrega}
+📝 *Comentarios:* {comentarios}
+🏠 *Dirección:* {direccion}
+📍 *Ubicación de entrega:*
+{ubicacion_maps}
+📏 *Distancia:* {distancia}
+🛵 *Motorizado:* {repartidor}
+🏍️ *Vehículo:* {vehiculo_repartidor}
+🔢 *Placa:* {placa_repartidor}
+────────────────────
+💰 *CUENTAS Y LIQUIDACIÓN MOTORIZADO:*
+• Mercadería: {mercaderia}
+• Tarifa Servicio Envío: {tarifa_envio}
+• Total a Cobrar: {total}
+• Método de Pago: {metodo_pago}
+• Banco: {banco}
+👉 *Liquidación:* {liquidacion_motorizado}"""
+
 data class StoreAndPricingConfig(
     val storeName: String = "Tienda Matriz",
     val storePlusCode: String = "5M5V+9P Managua",
@@ -159,7 +199,9 @@ data class StoreAndPricingConfig(
     val defaultShareFormat: ShareOutputFormat = ShareOutputFormat.WHATSAPP_TEXT,
     val preferentialThreshold: Double = 150.0,
     val preferentialDiscountPercent: Double = 15.0,
-    val preferentialAutoPrompt: Boolean = true
+    val preferentialAutoPrompt: Boolean = true,
+    val customerMessageTemplate: String = DEFAULT_CUSTOMER_MESSAGE_TEMPLATE,
+    val driverDispatchTemplate: String = DEFAULT_DRIVER_DISPATCH_TEMPLATE
 ) {
     val storeCoordinate: GeoCoordinate
         get() = GeoCoordinate(storeLat, storeLng)
@@ -237,5 +279,6 @@ data class SavedQuoteRecord(
     val orderStatus: OrderStatus = OrderStatus.EN_RUTA,
     val driverSettlementNote: String = "",
     val isDriverPaid: Boolean = false,
-    val driverPaidAt: String = ""
+    val driverPaidAt: String = "",
+    val isPaymentPendingOnDelivery: Boolean = false
 )

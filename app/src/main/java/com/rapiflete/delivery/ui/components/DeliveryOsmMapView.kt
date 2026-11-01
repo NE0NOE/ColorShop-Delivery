@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.drawable.BitmapDrawable
 import android.view.MotionEvent
+import android.widget.Toast
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -111,6 +112,14 @@ fun DeliveryOsmMapView(
             val receiver = object : MapEventsReceiver {
                 override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean {
                     if (p != null) {
+                        if (destination?.isFrozen == true) {
+                            Toast.makeText(
+                                context,
+                                "Destino congelado 🔒. Desbloquea o mantén presionado para mover el pin.",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            return true
+                        }
                         onMapTap(p.latitude, p.longitude)
                     }
                     return true

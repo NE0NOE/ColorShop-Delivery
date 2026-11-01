@@ -229,6 +229,7 @@ fun ColorShopTopBar(
  */
 @Composable
 fun ColorShopSplashScreen(
+    isExternalIntent: Boolean = false,
     onFinished: () -> Unit
 ) {
     var progress by remember { mutableFloatStateOf(0.55f) }
@@ -241,7 +242,11 @@ fun ColorShopSplashScreen(
         label = "logoScale"
     )
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(isExternalIntent) {
+        if (isExternalIntent) {
+            onFinished()
+            return@LaunchedEffect
+        }
         startAnim = true
         delay(450)
         progress = 0.85f

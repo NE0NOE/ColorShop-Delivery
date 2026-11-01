@@ -1,8 +1,15 @@
 package com.rapiflete.delivery.ui.screens
 
 import android.content.Intent
+import android.graphics.ImageDecoder
 import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -24,9 +31,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Chat
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddAPhoto
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HowToReg
@@ -42,6 +53,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -56,9 +69,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rapiflete.delivery.model.CourierDriver
@@ -98,6 +114,40 @@ fun CouriersScreen(
     var statusFilter by remember { mutableStateOf<CourierStatus?>(null) }
     var courierToDelete by remember { mutableStateOf<CourierDriver?>(null) }
     var courierToEdit by remember { mutableStateOf<CourierDriver?>(null) }
+
+    var showAddCourierForm by remember { mutableStateOf(false) }
+    var avatarUri by remember { mutableStateOf<Uri?>(null) }
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        avatarUri = uri
+    }
+
+    val previewInitials = remember(fullName) {
+        val words = fullName.trim().split(" ").filter { it.isNotBlank() }
+        if (words.size >= 2) {
+            "${words[0].first().uppercaseChar()}${words[1].first().uppercaseChar()}"
+        } else if (words.isNotEmpty() && words[0].isNotEmpty()) {
+            words[0].take(2).uppercase(java.util.Locale.getDefault())
+        } else {
+            ""
+        }
+    }
+
+    val avatarBitmap = remember(avatarUri) {
+        avatarUri?.let { uri ->
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, uri))
+                } else {
+                    @Suppress("DEPRECATION")
+                    MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+                }
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
 
     val filteredCouriers = remember(couriers, searchQuery, statusFilter) {
         couriers.filter { c ->
@@ -204,11 +254,11 @@ fun CouriersScreen(
                     modifier = Modifier.weight(1f)
                 )
                 CourierStatBox(
-                    icon = Icons.Default.Verified,
+                    icon = Icons.Default.CheckCircle,
                     iconBg = ColorShopSurfaceHigh,
                     iconTint = ColorShopPrimary,
-                    value = "4.9",
-                    label = "Calificación",
+                    value = "${couriers.count { it.status == CourierStatus.AVAILABLE }}",
+                    label = "Disponibles",
                     modifier = Modifier.weight(1f)
                 )
                 CourierStatBox(
@@ -221,321 +271,397 @@ fun CouriersScreen(
                 )
             }
 
-            // Módulo Formulario: Registrar Nuevo Repartidor
-            Surface(
-                color = Color.White,
-                shape = RoundedCornerShape(24.dp),
-                shadowElevation = 5.dp,
-                modifier = Modifier.fillMaxWidth()
+            // Botón Limpio y Visible: + Nuevo Repartidor
+            Button(
+                onClick = { showAddCourierForm = !showAddCourierForm },
+                shape = RoundedCornerShape(50),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ColorShopPrimary,
+                    contentColor = Color.White
+                ),
+                elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                Icon(
+                    imageVector = if (showAddCourierForm) Icons.Default.Close else Icons.Default.PersonAdd,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = if (showAddCourierForm) "Ocultar Formulario" else "+ Nuevo Repartidor",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
+                )
+            }
+
+            // Formulario Colapsable con AnimatedVisibility
+            AnimatedVisibility(visible = showAddCourierForm) {
+                Surface(
+                    color = Color.White,
+                    shape = RoundedCornerShape(24.dp),
+                    shadowElevation = 5.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(ColorShopSurfaceHigh),
-                                contentAlignment = Alignment.Center
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.PersonAdd,
-                                    contentDescription = null,
-                                    tint = ColorShopPrimary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                            Text(
-                                text = "Registrar Repartidor",
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = ColorShopDeepPlum
-                            )
-                        }
-
-                        Surface(
-                            color = ColorShopSurfaceLow,
-                            shape = RoundedCornerShape(50)
-                        ) {
-                            Text(
-                                text = "Nuevo Ingreso",
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = ColorShopMutedPlum,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-
-                    // Zona de Foto de Perfil
-                    Surface(
-                        color = ColorShopSurfaceLow,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(52.dp)
-                                    .clip(CircleShape)
-                                    .background(ColorShopSurfaceHigh),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AddAPhoto,
-                                    contentDescription = null,
-                                    tint = ColorShopPrimary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(ColorShopSurfaceHigh),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.PersonAdd,
+                                        contentDescription = null,
+                                        tint = ColorShopPrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                                 Text(
-                                    text = "Foto de perfil",
-                                    fontSize = 13.sp,
+                                    text = "Registrar Repartidor",
+                                    fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = ColorShopDeepPlum
                                 )
+                            }
+
+                            Surface(
+                                color = ColorShopSurfaceLow,
+                                shape = RoundedCornerShape(50)
+                            ) {
                                 Text(
-                                    text = "Para gafete e identificación de despacho",
-                                    fontSize = 11.sp,
-                                    color = ColorShopMutedPlum
+                                    text = "Nuevo Ingreso",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ColorShopMutedPlum,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                                 )
                             }
                         }
-                    }
 
-                    OutlinedTextField(
-                        value = fullName,
-                        onValueChange = { fullName = it },
-                        label = { Text("Nombre Completo") },
-                        placeholder = { Text("Ej. Marcos Morales") },
-                        leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null, tint = ColorShopMutedPlum) },
-                        singleLine = true,
-                        shape = RoundedCornerShape(50),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = ColorShopPrimary,
-                            unfocusedBorderColor = ColorShopSurfaceHigh,
-                            focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f),
-                            unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = phone,
-                        onValueChange = { phone = it },
-                        label = { Text("Teléfono WhatsApp (+505)") },
-                        placeholder = { Text("8823-1100") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(50),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = ColorShopPrimary,
-                            unfocusedBorderColor = ColorShopSurfaceHigh,
-                            focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f),
-                            unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    OutlinedTextField(
-                        value = docId,
-                        onValueChange = { docId = it },
-                        label = { Text("Cédula / Documento Oficial") },
-                        placeholder = { Text("001-290492-0044K") },
-                        leadingIcon = { Icon(Icons.Default.Pin, contentDescription = null, tint = ColorShopMutedPlum) },
-                        singleLine = true,
-                        shape = RoundedCornerShape(50),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = ColorShopPrimary,
-                            unfocusedBorderColor = ColorShopSurfaceHigh,
-                            focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f),
-                            unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = vehicleType,
-                            onValueChange = { vehicleType = it },
-                            label = { Text("Vehículo") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(50),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ColorShopPrimary,
-                                unfocusedBorderColor = ColorShopSurfaceHigh,
-                                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f),
-                                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f)
-                            ),
-                            modifier = Modifier.weight(1f)
-                        )
-                        OutlinedTextField(
-                            value = plate,
-                            onValueChange = { plate = it },
-                            label = { Text("Placa Oficial") },
-                            placeholder = { Text("M-28491") },
-                            singleLine = true,
-                            shape = RoundedCornerShape(50),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ColorShopPrimary,
-                                unfocusedBorderColor = ColorShopSurfaceHigh,
-                                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f),
-                                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f)
-                            ),
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-
-                    // Selector de Turno Asignado
-                    Text(
-                        text = "Turno Asignado",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ColorShopMutedPlum
-                    )
-
-                    val shifts = listOf("Mañana (8a-4p)", "Tarde/Noche", "Completo")
-                    Surface(
-                        color = ColorShopSurfaceLow,
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
+                        // Zona de Foto de Perfil / Avatar Dinámico
+                        Surface(
+                            color = ColorShopSurfaceLow,
+                            shape = RoundedCornerShape(16.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(4.dp),
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                .clickable { photoPickerLauncher.launch("image/*") }
                         ) {
-                            shifts.forEach { shift ->
-                                val isSel = selectedShift == shift
-                                Surface(
-                                    color = if (isSel) ColorShopPrimary else Color.Transparent,
-                                    shape = RoundedCornerShape(50),
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clickable { selectedShift = shift }
-                                ) {
-                                    Text(
-                                        text = shift,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSel) Color.White else ColorShopMutedPlum,
-                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
-                                        maxLines = 1
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Checks para incluir nombre y número del motorizado en el mensaje al cliente
-                    Surface(
-                        color = ColorShopSurfaceLow.copy(alpha = 0.65f),
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                        ) {
-                            Text(
-                                text = "Datos visibles en mensaje al cliente:",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = ColorShopDeepPlum
-                            )
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clickable { includeNameInMsg = !includeNameInMsg }
+                                Box(
+                                    modifier = Modifier
+                                        .size(54.dp)
+                                        .clip(CircleShape)
+                                        .background(ColorShopSurfaceHigh),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Checkbox(
-                                        checked = includeNameInMsg,
-                                        onCheckedChange = { includeNameInMsg = it },
-                                        colors = CheckboxDefaults.colors(checkedColor = ColorShopPrimary)
-                                    )
-                                    Text(
-                                        text = "Mostrar nombre",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = ColorShopDeepPlum
-                                    )
+                                    if (avatarBitmap != null) {
+                                        Image(
+                                            bitmap = avatarBitmap.asImageBitmap(),
+                                            contentDescription = "Foto de perfil",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else if (previewInitials.isNotEmpty()) {
+                                        Text(
+                                            text = previewInitials,
+                                            fontSize = 18.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = ColorShopPrimary
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.AddAPhoto,
+                                            contentDescription = "Elegir foto",
+                                            tint = ColorShopPrimary,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                    }
                                 }
 
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clickable { includePhoneInMsg = !includePhoneInMsg }
-                                ) {
-                                    Checkbox(
-                                        checked = includePhoneInMsg,
-                                        onCheckedChange = { includePhoneInMsg = it },
-                                        colors = CheckboxDefaults.colors(checkedColor = ColorShopPrimary)
-                                    )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = if (avatarBitmap != null) "Foto seleccionada" else if (previewInitials.isNotEmpty()) "Avatar: $previewInitials" else "Foto o Avatar de perfil",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorShopDeepPlum
+                                        )
+                                        Surface(
+                                            color = ColorShopPrimary.copy(alpha = 0.12f),
+                                            shape = RoundedCornerShape(50)
+                                        ) {
+                                            Text(
+                                                text = if (avatarBitmap != null) "Cambiar" else "Elegir",
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = ColorShopPrimary,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
                                     Text(
-                                        text = "Mostrar número",
-                                        fontSize = 12.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = ColorShopDeepPlum
+                                        text = if (avatarBitmap != null) {
+                                            "Toca para cambiar la imagen de galería"
+                                        } else if (previewInitials.isNotEmpty()) {
+                                            "Iniciales dinámicas generadas (o toca para elegir foto)"
+                                        } else {
+                                            "Toca para elegir foto de galería o escribe el nombre para iniciales"
+                                        },
+                                        fontSize = 11.sp,
+                                        color = ColorShopMutedPlum
                                     )
                                 }
                             }
                         }
-                    }
 
-                    Button(
-                        onClick = {
-                            if (fullName.isBlank()) {
-                                Toast.makeText(context, "Ingresa el nombre del repartidor", Toast.LENGTH_SHORT).show()
-                                return@Button
-                            }
-                            onAddCourier(
-                                fullName,
-                                phone,
-                                docId,
-                                vehicleType,
-                                plate,
-                                selectedShift,
-                                includeNameInMsg,
-                                includePhoneInMsg
+                        OutlinedTextField(
+                            value = fullName,
+                            onValueChange = { fullName = it },
+                            label = { Text("Nombre Completo") },
+                            placeholder = { Text("Ej. Marcos Morales") },
+                            leadingIcon = { Icon(Icons.Default.Badge, contentDescription = null, tint = ColorShopMutedPlum) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(50),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ColorShopPrimary,
+                                unfocusedBorderColor = ColorShopSurfaceHigh,
+                                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f),
+                                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = phone,
+                            onValueChange = { phone = it },
+                            label = { Text("Teléfono WhatsApp (+505)") },
+                            placeholder = { Text("8823-1100") },
+                            singleLine = true,
+                            shape = RoundedCornerShape(50),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ColorShopPrimary,
+                                unfocusedBorderColor = ColorShopSurfaceHigh,
+                                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f),
+                                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        OutlinedTextField(
+                            value = docId,
+                            onValueChange = { docId = it },
+                            label = { Text("Cédula / Documento Oficial") },
+                            placeholder = { Text("001-290492-0044K") },
+                            leadingIcon = { Icon(Icons.Default.Pin, contentDescription = null, tint = ColorShopMutedPlum) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(50),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ColorShopPrimary,
+                                unfocusedBorderColor = ColorShopSurfaceHigh,
+                                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f),
+                                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = vehicleType,
+                                onValueChange = { vehicleType = it },
+                                label = { Text("Vehículo") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(50),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ColorShopPrimary,
+                                    unfocusedBorderColor = ColorShopSurfaceHigh,
+                                    focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f),
+                                    unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f)
+                                ),
+                                modifier = Modifier.weight(1f)
                             )
-                            fullName = ""
-                            phone = ""
-                            docId = ""
-                            plate = ""
-                            Toast.makeText(context, "Repartidor registrado con éxito", Toast.LENGTH_SHORT).show()
-                        },
-                        shape = RoundedCornerShape(50),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = ColorShopSurfaceHigh,
-                            contentColor = ColorShopDeepPlum
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
-                    ) {
-                        Icon(Icons.Default.HowToReg, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Guardar y Asignar Repartidor", fontWeight = FontWeight.ExtraBold)
+                            OutlinedTextField(
+                                value = plate,
+                                onValueChange = { plate = it },
+                                label = { Text("Placa Oficial") },
+                                placeholder = { Text("M-28491") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(50),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ColorShopPrimary,
+                                    unfocusedBorderColor = ColorShopSurfaceHigh,
+                                    focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f),
+                                    unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.45f)
+                                ),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        // Selector de Turno Asignado
+                        Text(
+                            text = "Turno Asignado",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ColorShopMutedPlum
+                        )
+
+                        val shifts = listOf("Mañana (8a-4p)", "Tarde/Noche", "Completo")
+                        Surface(
+                            color = ColorShopSurfaceLow,
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                shifts.forEach { shift ->
+                                    val isSel = selectedShift == shift
+                                    Surface(
+                                        color = if (isSel) ColorShopPrimary else Color.Transparent,
+                                        shape = RoundedCornerShape(50),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { selectedShift = shift }
+                                    ) {
+                                        Text(
+                                            text = shift,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSel) Color.White else ColorShopMutedPlum,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 6.dp),
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Checks para incluir nombre y número del motorizado en el mensaje al cliente
+                        Surface(
+                            color = ColorShopSurfaceLow.copy(alpha = 0.65f),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Text(
+                                    text = "Datos visibles en mensaje al cliente:",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ColorShopDeepPlum
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.clickable { includeNameInMsg = !includeNameInMsg }
+                                    ) {
+                                        Checkbox(
+                                            checked = includeNameInMsg,
+                                            onCheckedChange = { includeNameInMsg = it },
+                                            colors = CheckboxDefaults.colors(checkedColor = ColorShopPrimary)
+                                        )
+                                        Text(
+                                            text = "Mostrar nombre",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = ColorShopDeepPlum
+                                        )
+                                    }
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.clickable { includePhoneInMsg = !includePhoneInMsg }
+                                    ) {
+                                        Checkbox(
+                                            checked = includePhoneInMsg,
+                                            onCheckedChange = { includePhoneInMsg = it },
+                                            colors = CheckboxDefaults.colors(checkedColor = ColorShopPrimary)
+                                        )
+                                        Text(
+                                            text = "Mostrar número",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = ColorShopDeepPlum
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                if (fullName.isBlank()) {
+                                    Toast.makeText(context, "Ingresa el nombre del repartidor", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                onAddCourier(
+                                    fullName,
+                                    phone,
+                                    docId,
+                                    vehicleType,
+                                    plate,
+                                    selectedShift,
+                                    includeNameInMsg,
+                                    includePhoneInMsg
+                                )
+                                fullName = ""
+                                phone = ""
+                                docId = ""
+                                plate = ""
+                                avatarUri = null
+                                showAddCourierForm = false
+                                Toast.makeText(context, "Repartidor registrado con éxito", Toast.LENGTH_SHORT).show()
+                            },
+                            shape = RoundedCornerShape(50),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ColorShopPrimary,
+                                contentColor = Color.White
+                            ),
+                            elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                        ) {
+                            Icon(Icons.Default.HowToReg, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Guardar y Asignar Repartidor", fontWeight = FontWeight.ExtraBold, color = Color.White)
+                        }
                     }
                 }
             }
@@ -605,6 +731,7 @@ fun CouriersScreen(
                 var editVehicle by remember(currentEditing) { mutableStateOf(currentEditing.vehicleModel) }
                 var editDocId by remember(currentEditing) { mutableStateOf(currentEditing.documentId) }
                 var editShift by remember(currentEditing) { mutableStateOf(currentEditing.shift) }
+                var editStatus by remember(currentEditing) { mutableStateOf(currentEditing.status) }
                 var editIncludeName by remember(currentEditing) { mutableStateOf(currentEditing.includeNameInCustomerMessage) }
                 var editIncludePhone by remember(currentEditing) { mutableStateOf(currentEditing.includePhoneInCustomerMessage) }
 
@@ -657,6 +784,83 @@ fun CouriersScreen(
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
+
+                            // Selector de Turno Asignado
+                            Text(
+                                text = "Turno Asignado",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopMutedPlum
+                            )
+                            val shiftsList = listOf("Mañana (8a-4p)", "Tarde/Noche", "Completo")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                shiftsList.forEach { shift ->
+                                    val isSel = editShift == shift
+                                    Surface(
+                                        color = if (isSel) ColorShopPrimary else ColorShopSurfaceLow,
+                                        shape = RoundedCornerShape(50),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { editShift = shift }
+                                    ) {
+                                        Text(
+                                            text = shift,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSel) Color.White else ColorShopDeepPlum,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Selector de Estado
+                            Text(
+                                text = "Estado del Repartidor",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopMutedPlum
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                CourierStatus.entries.forEach { st ->
+                                    val isSel = editStatus == st
+                                    val activeColor = when (st) {
+                                        CourierStatus.AVAILABLE -> ColorShopPrimary
+                                        CourierStatus.ON_ROUTE -> ColorShopTertiaryBlue
+                                        CourierStatus.OFF_DUTY -> ColorShopMutedPlum
+                                    }
+                                    Surface(
+                                        color = if (isSel) activeColor else ColorShopSurfaceLow,
+                                        shape = RoundedCornerShape(50),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { editStatus = st }
+                                    ) {
+                                        Text(
+                                            text = when (st) {
+                                                CourierStatus.AVAILABLE -> "Disponible"
+                                                CourierStatus.ON_ROUTE -> "En Ruta"
+                                                CourierStatus.OFF_DUTY -> "Fuera Turno"
+                                            },
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSel) Color.White else ColorShopDeepPlum,
+                                            textAlign = TextAlign.Center,
+                                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+                            }
+
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.clickable { editIncludeName = !editIncludeName }
@@ -691,6 +895,11 @@ fun CouriersScreen(
                                 } else {
                                     cleanName.take(2).uppercase(java.util.Locale.getDefault())
                                 }
+                                val statusDetail = when (editStatus) {
+                                    CourierStatus.AVAILABLE -> "Disponible en tienda matriz"
+                                    CourierStatus.ON_ROUTE -> "En ruta de entrega"
+                                    CourierStatus.OFF_DUTY -> "Fuera de turno"
+                                }
                                 val updated = currentEditing.copy(
                                     name = cleanName,
                                     initials = initials,
@@ -700,6 +909,8 @@ fun CouriersScreen(
                                     vehicleType = editVehicle.trim(),
                                     documentId = editDocId.trim(),
                                     shift = editShift.trim(),
+                                    status = editStatus,
+                                    statusDetail = statusDetail,
                                     includeNameInCustomerMessage = editIncludeName,
                                     includePhoneInCustomerMessage = editIncludePhone
                                 )
@@ -839,6 +1050,7 @@ private fun CourierDirectoryCard(
     courier: CourierDriver,
     onToggleIncludeName: (Boolean) -> Unit,
     onToggleIncludePhone: (Boolean) -> Unit,
+    onUpdateCourier: (CourierDriver) -> Unit = {},
     onEditRequest: () -> Unit = {},
     onDeleteRequest: () -> Unit = {}
 ) {
@@ -901,7 +1113,7 @@ private fun CourierDirectoryCard(
                             }
                         }
                         Text(
-                            text = "${courier.vehicleModel} • Placa ${courier.plate} • 📞 ${courier.phone}",
+                            text = "${courier.vehicleModel} • Placa ${courier.plate} • 🕒 ${courier.shift} • 📞 ${courier.phone}",
                             fontSize = 12.sp,
                             color = ColorShopMutedPlum
                         )
@@ -993,23 +1205,98 @@ private fun CourierDirectoryCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    val isOnRoute = courier.status == CourierStatus.ON_ROUTE
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(9.dp)
-                                .clip(CircleShape)
-                                .background(if (isOnRoute) ColorShopTertiaryBlue else ColorShopPrimary)
-                        )
-                        Text(
-                            text = courier.statusDetail,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (isOnRoute) ColorShopTertiaryBlue else ColorShopPrimary
-                        )
+                    var statusMenuExpanded by remember { mutableStateOf(false) }
+                    val currentStatus = courier.status
+                    val (statusColor, statusBg) = when (currentStatus) {
+                        CourierStatus.AVAILABLE -> Pair(ColorShopPrimary, ColorShopPrimary.copy(alpha = 0.12f))
+                        CourierStatus.ON_ROUTE -> Pair(ColorShopTertiaryBlue, ColorShopTertiaryBlue.copy(alpha = 0.12f))
+                        CourierStatus.OFF_DUTY -> Pair(ColorShopMutedPlum, ColorShopMutedPlum.copy(alpha = 0.12f))
+                    }
+
+                    Box {
+                        Surface(
+                            color = statusBg,
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier.clickable { statusMenuExpanded = true }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(statusColor)
+                                )
+                                Text(
+                                    text = courier.statusDetail,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = statusColor
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Cambiar estado",
+                                    tint = statusColor,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+
+                        DropdownMenu(
+                            expanded = statusMenuExpanded,
+                            onDismissRequest = { statusMenuExpanded = false }
+                        ) {
+                            CourierStatus.entries.forEach { st ->
+                                val stColor = when (st) {
+                                    CourierStatus.AVAILABLE -> ColorShopPrimary
+                                    CourierStatus.ON_ROUTE -> ColorShopTertiaryBlue
+                                    CourierStatus.OFF_DUTY -> ColorShopMutedPlum
+                                }
+                                val stLabel = when (st) {
+                                    CourierStatus.AVAILABLE -> "Disponible"
+                                    CourierStatus.ON_ROUTE -> "En Ruta"
+                                    CourierStatus.OFF_DUTY -> "Fuera de Turno"
+                                }
+                                val stDetail = when (st) {
+                                    CourierStatus.AVAILABLE -> "Disponible en tienda matriz"
+                                    CourierStatus.ON_ROUTE -> "En ruta de entrega"
+                                    CourierStatus.OFF_DUTY -> "Fuera de turno"
+                                }
+                                DropdownMenuItem(
+                                    text = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .clip(CircleShape)
+                                                    .background(stColor)
+                                            )
+                                            Text(
+                                                text = stLabel,
+                                                fontWeight = if (st == courier.status) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (st == courier.status) stColor else ColorShopDeepPlum
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        statusMenuExpanded = false
+                                        if (st != courier.status) {
+                                            val updated = courier.copy(
+                                                status = st,
+                                                statusDetail = stDetail
+                                            )
+                                            onUpdateCourier(updated)
+                                        }
+                                    }
+                                )
+                            }
+                        }
                     }
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -54,11 +55,15 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -120,12 +125,107 @@ fun HistoryScreen(
         SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
     }
     var selectedDateIso by remember { mutableStateOf(todayIso) }
-    var showDateSelectorPanel by remember { mutableStateOf(false) }
 
     var selectedPaymentFilter by remember { mutableStateOf("ALL") } // ALL, CASH, TRANSFER
     var selectedCourierName by remember { mutableStateOf<String?>(null) }
     var selectedStatusFilter by remember { mutableStateOf<OrderStatus?>(null) }
     var showOnlyUnpaidDriverDeliveries by remember { mutableStateOf(false) }
+    var showFiltersPanel by remember { mutableStateOf(false) }
+
+    var recordPendingDelete by remember { mutableStateOf<SavedQuoteRecord?>(null) }
+    var recordPendingCancel by remember { mutableStateOf<SavedQuoteRecord?>(null) }
+
+    if (recordPendingDelete != null) {
+        val target = recordPendingDelete!!
+        AlertDialog(
+            onDismissRequest = { recordPendingDelete = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.DeleteOutline,
+                    contentDescription = null,
+                    tint = Color(0xFFC62828),
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "¿Eliminar pedido permanentemente?",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ColorShopDeepPlum
+                )
+            },
+            text = {
+                Text(
+                    text = "Se eliminará el registro de \"${target.customerNote}\" (${target.receiptId}). Esta acción no se puede deshacer.",
+                    fontSize = 13.sp,
+                    color = ColorShopMutedPlum
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDeleteRecord(target.id)
+                        recordPendingDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828))
+                ) {
+                    Text("Eliminar", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { recordPendingDelete = null }) {
+                    Text("Cancelar", color = ColorShopMutedPlum)
+                }
+            }
+        )
+    }
+
+    if (recordPendingCancel != null) {
+        val target = recordPendingCancel!!
+        AlertDialog(
+            onDismissRequest = { recordPendingCancel = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = null,
+                    tint = Color(0xFFC62828),
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "¿Cancelar este pedido?",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ColorShopDeepPlum
+                )
+            },
+            text = {
+                Text(
+                    text = "¿Estás seguro de cancelar el pedido de \"${target.customerNote}\" (${target.receiptId})? Cambiará al estado Cancelado ❌.",
+                    fontSize = 13.sp,
+                    color = ColorShopMutedPlum
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onUpdateOrderStatus(target.id, OrderStatus.CANCELADO)
+                        recordPendingCancel = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC62828))
+                ) {
+                    Text("Sí, cancelar pedido", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { recordPendingCancel = null }) {
+                    Text("Volver", color = ColorShopMutedPlum)
+                }
+            }
+        )
+    }
 
     // Envíos con pago electrónico no liquidados al motorizado (acumula hoy, ayer y días anteriores)
     // Los pagos en efectivo se excluyen porque el motorizado ya se los auto-descuenta de inmediato.
@@ -256,13 +356,12 @@ fun HistoryScreen(
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Surface(
-                    color = if (showDateSelectorPanel || selectedDateIso != todayIso) ColorShopPrimary else Color.White,
+                    color = if (selectedDateIso != todayIso) ColorShopPrimary else Color.White,
                     shape = CircleShape,
                     shadowElevation = 3.dp,
                     modifier = Modifier
                         .size(40.dp)
                         .clickable {
-                            showDateSelectorPanel = !showDateSelectorPanel
                             openNativeDatePicker()
                         }
                 ) {
@@ -270,7 +369,7 @@ fun HistoryScreen(
                         Icon(
                             imageVector = Icons.Default.CalendarToday,
                             contentDescription = "Seleccionar fecha",
-                            tint = if (showDateSelectorPanel || selectedDateIso != todayIso) Color.White else ColorShopPrimary,
+                            tint = if (selectedDateIso != todayIso) Color.White else ColorShopPrimary,
                             modifier = Modifier.size(19.dp)
                         )
                     }
@@ -308,75 +407,69 @@ fun HistoryScreen(
             }
         }
 
-        // Barra rápida de fechas con envíos (se despliega al tocar el calendario o cambiar de día)
-        AnimatedVisibility(visible = showDateSelectorPanel || selectedDateIso != todayIso || availableDatesWithRecords.size > 1) {
-            Column(
+        // Barra rápida de fechas con envíos compacta
+        if (availableDatesWithRecords.size > 1) {
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
+                Surface(
+                    color = ColorShopSurfaceHigh,
+                    shape = RoundedCornerShape(50),
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .height(28.dp)
+                        .clickable { openNativeDatePicker() }
                 ) {
-                    Surface(
-                        color = ColorShopSurfaceHigh,
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier
-                            .height(32.dp)
-                            .clickable { openNativeDatePicker() }
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        Icon(
+                            imageVector = Icons.Default.CalendarToday,
+                            contentDescription = null,
+                            tint = ColorShopPrimary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = "Otra fecha",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ColorShopPrimary
+                        )
+                    }
+                }
+
+                availableDatesWithRecords.forEach { dateIso ->
+                    val countForDate = records.count { (it.dateIso.ifBlank { todayIso }) == dateIso }
+                    val isSelected = dateIso == selectedDateIso
+                    Surface(
+                        color = if (isSelected) ColorShopPrimary else Color.White,
+                        shape = RoundedCornerShape(50),
+                        shadowElevation = if (isSelected) 2.dp else 1.dp,
+                        modifier = Modifier
+                            .height(28.dp)
+                            .clickable { selectedDateIso = dateIso }
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.padding(horizontal = 10.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.CalendarToday,
-                                contentDescription = null,
-                                tint = ColorShopPrimary,
-                                modifier = Modifier.size(13.dp)
-                            )
                             Text(
-                                text = "Elegir fecha...",
+                                text = "${formatDateIsoShort(dateIso, todayIso)} ($countForDate)",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = ColorShopPrimary
+                                color = if (isSelected) Color.White else ColorShopDeepPlum
                             )
-                        }
-                    }
-
-                    availableDatesWithRecords.forEach { dateIso ->
-                        val countForDate = records.count { (it.dateIso.ifBlank { todayIso }) == dateIso }
-                        val isSelected = dateIso == selectedDateIso
-                        Surface(
-                            color = if (isSelected) ColorShopPrimary else Color.White,
-                            shape = RoundedCornerShape(50),
-                            shadowElevation = if (isSelected) 3.dp else 1.dp,
-                            modifier = Modifier
-                                .height(32.dp)
-                                .clickable { selectedDateIso = dateIso }
-                        ) {
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier.padding(horizontal = 12.dp)
-                            ) {
-                                Text(
-                                    text = "${formatDateIsoShort(dateIso, todayIso)} ($countForDate)",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isSelected) Color.White else ColorShopDeepPlum
-                                )
-                            }
                         }
                     }
                 }
             }
+            Spacer(modifier = Modifier.height(4.dp))
         }
 
         // Tarjeta de Resumen Diario (3 cuadros tipo Bento de Stitch) con navegación entre días
@@ -720,83 +813,146 @@ fun HistoryScreen(
         Spacer(modifier = Modifier.height(10.dp))
 
         // Recuadro Bento Destacado: Saldo Pendiente a Pagar al Motorizado (Hoy y Acumulado de Días Anteriores)
-        Surface(
-            color = if (totalOwedAllTime > 0) Color(0xFFFFF8E1) else Color(0xFFF1F8E9),
-            shape = RoundedCornerShape(20.dp),
-            shadowElevation = 4.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .border(
-                    1.dp,
-                    if (totalOwedAllTime > 0) Color(0xFFFFB300).copy(alpha = 0.7f) else Color(0xFF81C784).copy(alpha = 0.7f),
-                    RoundedCornerShape(20.dp)
-                )
-        ) {
-            Column(
-                modifier = Modifier.padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+        if (totalOwedAllTime == 0.0) {
+            Surface(
+                color = Color(0xFFF1F8E9),
+                shape = RoundedCornerShape(16.dp),
+                shadowElevation = 1.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .border(1.dp, Color(0xFF81C784).copy(alpha = 0.5f), RoundedCornerShape(16.dp))
             ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.weight(1f)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(26.dp)
                                 .clip(CircleShape)
-                                .background(if (totalOwedAllTime > 0) Color(0xFFFFB300) else Color(0xFF4CAF50)),
+                                .background(Color(0xFF4CAF50)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Payments,
+                                imageVector = Icons.Default.CheckCircle,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(19.dp)
+                                modifier = Modifier.size(15.dp)
                             )
                         }
                         Column {
                             Text(
-                                text = "Total a Pagar al Motorizado",
-                                fontSize = 14.sp,
+                                text = "Al día con motorizados ✅",
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = ColorShopDeepPlum
+                                color = Color(0xFF2E7D32)
                             )
                             Text(
-                                text = if (selectedCourierName != null) "Repartidor: $selectedCourierName" else "Todos los repartidores",
-                                fontSize = 11.sp,
-                                color = ColorShopMutedPlum
+                                text = if (selectedCourierName != null) "Repartidor: $selectedCourierName" else "Sin pagos pendientes de transferencia ni POS",
+                                fontSize = 10.sp,
+                                color = Color(0xFF388E3C)
+                            )
+                        }
+                    }
+                    Surface(
+                        color = Color(0xFF2E7D32),
+                        shape = RoundedCornerShape(50)
+                    ) {
+                        Text(
+                            text = "$currencySymbol 0",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+            }
+        } else {
+            Surface(
+                color = Color(0xFFFFF8E1),
+                shape = RoundedCornerShape(20.dp),
+                shadowElevation = 4.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .border(
+                        1.dp,
+                        Color(0xFFFFB300).copy(alpha = 0.7f),
+                        RoundedCornerShape(20.dp)
+                    )
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFFFFB300)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Payments,
+                                    contentDescription = null,
+                                    tint = Color.White,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "Total a Pagar al Motorizado",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = ColorShopDeepPlum
+                                )
+                                Text(
+                                    text = if (selectedCourierName != null) "Repartidor: $selectedCourierName" else "Todos los repartidores",
+                                    fontSize = 11.sp,
+                                    color = ColorShopMutedPlum
+                                )
+                            }
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = "$currencySymbol ${totalOwedAllTime.toInt()}",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFFE65100)
+                            )
+                            Text(
+                                text = "Pendiente tienda",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFE65100)
                             )
                         }
                     }
 
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "$currencySymbol ${totalOwedAllTime.toInt()}",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = if (totalOwedAllTime > 0) Color(0xFFE65100) else Color(0xFF2E7D32)
-                        )
-                        Text(
-                            text = if (totalOwedAllTime > 0) "Pendiente tienda" else "Al día ✅",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (totalOwedAllTime > 0) Color(0xFFE65100) else Color(0xFF2E7D32)
-                        )
-                    }
-                }
+                    HorizontalDivider(color = Color(0xFFFFE082))
 
-                HorizontalDivider(color = if (totalOwedAllTime > 0) Color(0xFFFFE082) else Color(0xFFC8E6C9))
-
-                // Desglose de saldos: acumulado de días anteriores vs saldo de hoy
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    if (totalOwedAllTime > 0) {
+                    // Desglose de saldos: acumulado de días anteriores vs saldo de hoy
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         if (unpaidPastDays.isNotEmpty()) {
                             Text(
                                 text = "⚠️ Acumulado de días anteriores: $currencySymbol ${unpaidPastDays.sumOf { it.deliveryFee }.toInt()} (${unpaidPastDays.size} envíos)",
@@ -816,179 +972,273 @@ fun HistoryScreen(
                             fontSize = 10.sp,
                             color = ColorShopMutedPlum
                         )
-                    } else {
+                    }
+
+                    // Botones rápidos: Conmutar lista de pendientes acumulados y Generar Liquidación Gráfica
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            color = if (showOnlyUnpaidDriverDeliveries) Color(0xFFE65100) else Color.White,
+                            shape = RoundedCornerShape(50),
+                            shadowElevation = 1.dp,
+                            modifier = Modifier
+                                .weight(1.1f)
+                                .height(34.dp)
+                                .clickable { showOnlyUnpaidDriverDeliveries = !showOnlyUnpaidDriverDeliveries }
+                                .border(1.dp, Color(0xFFE65100), RoundedCornerShape(50))
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                Text(
+                                    text = if (showOnlyUnpaidDriverDeliveries) "Ver vista normal por fecha" else "Ver Pendientes (${allUnpaidElectronicDeliveries.size})",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (showOnlyUnpaidDriverDeliveries) Color.White else Color(0xFFE65100)
+                                )
+                            }
+                        }
+
+                        Surface(
+                            color = ColorShopPrimary,
+                            shape = RoundedCornerShape(50),
+                            shadowElevation = 2.dp,
+                            modifier = Modifier
+                                .weight(0.9f)
+                                .height(34.dp)
+                                .clickable {
+                                    val targetRecords = if (selectedCourierName != null) {
+                                        records.filter { it.courierName.equals(selectedCourierName, ignoreCase = true) }
+                                    } else {
+                                        records
+                                    }
+                                    val reportBitmap = ReceiptImageGenerator.generateDriverSettlementReportBitmap(
+                                        courierName = selectedCourierName ?: "General",
+                                        records = targetRecords,
+                                        currencySymbol = currencySymbol
+                                    )
+                                    val uri = ReceiptImageGenerator.saveBitmapToShareCache(context, reportBitmap, "liquidacion_cuentas")
+                                    ReceiptImageGenerator.shareReceiptImage(
+                                        context,
+                                        uri,
+                                        "Corte de Cuentas y Liquidación • ColorShop Delivery • Repartidor: ${selectedCourierName ?: "Todos"}"
+                                    )
+                                }
+                        ) {
+                            Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
+                                Text(
+                                    text = "Liquidación 📊",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Barra / Sección Compacta y Colapsable de Filtros Consolidados
+        val hasActiveFilters = selectedStatusFilter != null || selectedPaymentFilter != "ALL" || selectedCourierName != null
+        Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(16.dp),
+            shadowElevation = 2.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showFiltersPanel = !showFiltersPanel }
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.FilterAlt,
+                            contentDescription = "Filtros",
+                            tint = if (hasActiveFilters) ColorShopPrimary else ColorShopMutedPlum,
+                            modifier = Modifier.size(16.dp)
+                        )
                         Text(
-                            text = "No hay tarifas de entrega pendientes de liquidar por transferencias ni POS con el motorizado.",
-                            fontSize = 11.sp,
-                            color = Color(0xFF2E7D32)
+                            text = "Filtros",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (hasActiveFilters) ColorShopPrimary else ColorShopDeepPlum
+                        )
+                        if (hasActiveFilters) {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.horizontalScroll(rememberScrollState())
+                            ) {
+                                selectedStatusFilter?.let { st ->
+                                    CompactFilterBadge(text = "${st.emoji} ${st.label}") {
+                                        selectedStatusFilter = null
+                                    }
+                                }
+                                if (selectedPaymentFilter != "ALL") {
+                                    val pText = if (selectedPaymentFilter == "CASH") "Efectivo" else "Transferencia"
+                                    CompactFilterBadge(text = pText) {
+                                        selectedPaymentFilter = "ALL"
+                                    }
+                                }
+                                selectedCourierName?.let { cName ->
+                                    CompactFilterBadge(text = cName.substringBefore(" ")) {
+                                        selectedCourierName = null
+                                    }
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = "Todos los pedidos (${recordsForSelectedDate.size})",
+                                fontSize = 11.sp,
+                                color = ColorShopMutedPlum,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        if (hasActiveFilters) {
+                            Text(
+                                text = "Limpiar",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopPrimary,
+                                modifier = Modifier
+                                    .clickable {
+                                        selectedStatusFilter = null
+                                        selectedPaymentFilter = "ALL"
+                                        selectedCourierName = null
+                                    }
+                                    .padding(horizontal = 4.dp, vertical = 2.dp)
+                            )
+                        }
+                        Icon(
+                            imageVector = if (showFiltersPanel) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = if (showFiltersPanel) "Colapsar filtros" else "Expandir filtros",
+                            tint = ColorShopPrimary,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
 
-                // Botones rápidos: Conmutar lista de pendientes acumulados y Generar Liquidación Gráfica
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Surface(
-                        color = if (showOnlyUnpaidDriverDeliveries) Color(0xFFE65100) else Color.White,
-                        shape = RoundedCornerShape(50),
-                        shadowElevation = 1.dp,
+                AnimatedVisibility(visible = showFiltersPanel) {
+                    Column(
                         modifier = Modifier
-                            .weight(1.1f)
-                            .height(34.dp)
-                            .clickable { showOnlyUnpaidDriverDeliveries = !showOnlyUnpaidDriverDeliveries }
-                            .border(1.dp, Color(0xFFE65100), RoundedCornerShape(50))
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
-                            Text(
-                                text = if (showOnlyUnpaidDriverDeliveries) "Ver vista normal por fecha" else "Ver Pendientes (${allUnpaidElectronicDeliveries.size})",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (showOnlyUnpaidDriverDeliveries) Color.White else Color(0xFFE65100)
-                            )
-                        }
-                    }
+                        HorizontalDivider(color = ColorShopSurfaceHigh)
 
-                    Surface(
-                        color = ColorShopPrimary,
-                        shape = RoundedCornerShape(50),
-                        shadowElevation = 2.dp,
-                        modifier = Modifier
-                            .weight(0.9f)
-                            .height(34.dp)
-                            .clickable {
-                                val targetRecords = if (selectedCourierName != null) {
-                                    records.filter { it.courierName.equals(selectedCourierName, ignoreCase = true) }
-                                } else {
-                                    records
-                                }
-                                val reportBitmap = ReceiptImageGenerator.generateDriverSettlementReportBitmap(
-                                    courierName = selectedCourierName ?: "General",
-                                    records = targetRecords,
-                                    currencySymbol = currencySymbol
-                                )
-                                val uri = ReceiptImageGenerator.saveBitmapToShareCache(context, reportBitmap, "liquidacion_cuentas")
-                                ReceiptImageGenerator.shareReceiptImage(
-                                    context,
-                                    uri,
-                                    "Corte de Cuentas y Liquidación • ColorShop Delivery • Repartidor: ${selectedCourierName ?: "Todos"}"
+                        // 1. Estados
+                        Text(
+                            text = "Estado del pedido:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ColorShopMutedPlum
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            HistoryFilterPill(
+                                label = "Todos (${recordsForSelectedDate.size})",
+                                selected = selectedStatusFilter == null,
+                                onClick = { selectedStatusFilter = null }
+                            )
+                            OrderStatus.entries.forEach { st ->
+                                val count = recordsForSelectedDate.count { it.orderStatus == st }
+                                HistoryFilterPill(
+                                    label = "${st.emoji} ${st.label} ($count)",
+                                    selected = selectedStatusFilter == st,
+                                    onClick = { selectedStatusFilter = st }
                                 )
                             }
-                    ) {
-                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
-                            Text(
-                                text = "Liquidación 📊",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White
+                        }
+
+                        // 2. Método de pago
+                        Text(
+                            text = "Método de pago:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ColorShopMutedPlum
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            HistoryFilterPill(
+                                label = "Todos Pagos",
+                                selected = selectedPaymentFilter == "ALL",
+                                onClick = { selectedPaymentFilter = "ALL" }
                             )
+                            HistoryFilterPill(
+                                label = "Efectivo",
+                                selected = selectedPaymentFilter == "CASH",
+                                onClick = { selectedPaymentFilter = "CASH" }
+                            )
+                            HistoryFilterPill(
+                                label = "Transferencia",
+                                selected = selectedPaymentFilter == "TRANSFER",
+                                onClick = { selectedPaymentFilter = "TRANSFER" }
+                            )
+                        }
+
+                        // 3. Repartidor
+                        Text(
+                            text = "Repartidor:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ColorShopMutedPlum
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            HistoryFilterPill(
+                                label = "Todos (${couriers.size})",
+                                selected = selectedCourierName == null,
+                                onClick = { selectedCourierName = null }
+                            )
+
+                            couriers.forEach { courier ->
+                                val count = recordsForSelectedDate.count { it.courierName.equals(courier.name, ignoreCase = true) }
+                                HistoryFilterPill(
+                                    label = "${courier.initials} · ${courier.name.substringBefore(" ")} ($count)",
+                                    selected = selectedCourierName == courier.name,
+                                    onClick = {
+                                        selectedCourierName = if (selectedCourierName == courier.name) null else courier.name
+                                    }
+                                )
+                            }
                         }
                     }
                 }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Filas Horizontales de Chips de Filtro (Estado del Pedido, Método de cobro y Repartidores)
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            HistoryFilterPill(
-                label = "Todos Estados (${recordsForSelectedDate.size})",
-                selected = selectedStatusFilter == null,
-                onClick = { selectedStatusFilter = null }
-            )
-            OrderStatus.entries.forEach { st ->
-                val count = recordsForSelectedDate.count { it.orderStatus == st }
-                HistoryFilterPill(
-                    label = "${st.emoji} ${st.label} ($count)",
-                    selected = selectedStatusFilter == st,
-                    onClick = { selectedStatusFilter = st }
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            HistoryFilterPill(
-                label = "Todos Pagos",
-                selected = selectedPaymentFilter == "ALL",
-                onClick = { selectedPaymentFilter = "ALL" }
-            )
-            HistoryFilterPill(
-                label = "Efectivo",
-                selected = selectedPaymentFilter == "CASH",
-                onClick = { selectedPaymentFilter = "CASH" }
-            )
-            HistoryFilterPill(
-                label = "Transferencia",
-                selected = selectedPaymentFilter == "TRANSFER",
-                onClick = { selectedPaymentFilter = "TRANSFER" }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                color = ColorShopSurfaceHigh.copy(alpha = 0.7f),
-                shape = RoundedCornerShape(50)
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.DirectionsBike,
-                        contentDescription = null,
-                        tint = ColorShopPrimary,
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Text(
-                        text = "Repartidores:",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ColorShopPrimary
-                    )
-                }
-            }
-
-            HistoryFilterPill(
-                label = "Todos (${couriers.size})",
-                selected = selectedCourierName == null,
-                onClick = { selectedCourierName = null }
-            )
-
-            couriers.forEach { courier ->
-                val count = recordsForSelectedDate.count { it.courierName.equals(courier.name, ignoreCase = true) }
-                HistoryFilterPill(
-                    label = "${courier.initials} · ${courier.name.substringBefore(" ")} ($count)",
-                    selected = selectedCourierName == courier.name,
-                    onClick = {
-                        selectedCourierName = if (selectedCourierName == courier.name) null else courier.name
-                    }
-                )
             }
         }
 
@@ -1079,8 +1329,9 @@ fun HistoryScreen(
                         config = config,
                         onSelectInMap = { onSelectRecord(record) },
                         onUpdateStatus = { newStatus -> onUpdateOrderStatus(record.id, newStatus) },
+                        onRequestCancel = { recordPendingCancel = record },
                         onToggleDriverPaid = { onToggleDriverPaid(record.id) },
-                        onDelete = { onDeleteRecord(record.id) }
+                        onRequestDelete = { recordPendingDelete = record }
                     )
                 }
             }
@@ -1101,12 +1352,12 @@ private fun HistoryFilterPill(
         shape = RoundedCornerShape(50),
         shadowElevation = if (selected) 4.dp else 1.dp,
         modifier = Modifier
-            .height(34.dp)
+            .heightIn(min = 36.dp)
             .clickable { onClick() }
     ) {
         Box(
             contentAlignment = Alignment.Center,
-            modifier = Modifier.padding(horizontal = 14.dp)
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
         ) {
             Text(
                 text = label,
@@ -1119,13 +1370,45 @@ private fun HistoryFilterPill(
 }
 
 @Composable
+private fun CompactFilterBadge(
+    text: String,
+    onRemove: () -> Unit
+) {
+    Surface(
+        color = ColorShopSurfaceHigh,
+        shape = RoundedCornerShape(50),
+        modifier = Modifier.clickable { onRemove() }
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(3.dp)
+        ) {
+            Text(
+                text = text,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = ColorShopPrimary
+            )
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Quitar filtro",
+                tint = ColorShopPrimary,
+                modifier = Modifier.size(10.dp)
+            )
+        }
+    }
+}
+
+@Composable
 private fun TimelineHistoryItem(
     record: SavedQuoteRecord,
     config: StoreAndPricingConfig = StoreAndPricingConfig(),
     onSelectInMap: () -> Unit,
     onUpdateStatus: (OrderStatus) -> Unit = {},
+    onRequestCancel: () -> Unit = {},
     onToggleDriverPaid: () -> Unit = {},
-    onDelete: () -> Unit
+    onRequestDelete: () -> Unit
 ) {
     val context = LocalContext.current
     var expandedNotes by remember { mutableStateOf(false) }
@@ -1310,58 +1593,82 @@ private fun TimelineHistoryItem(
                                 Surface(
                                     color = Color(0xFFE8F5E9),
                                     shape = RoundedCornerShape(50),
-                                    modifier = Modifier.clickable { onUpdateStatus(OrderStatus.ENTREGADO) }
+                                    modifier = Modifier
+                                        .heightIn(min = 38.dp)
+                                        .clickable { onUpdateStatus(OrderStatus.ENTREGADO) }
                                 ) {
-                                    Text(
-                                        text = "Entregado ✅",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF2E7D32),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Entregado ✅",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF2E7D32)
+                                        )
+                                    }
                                 }
                                 Surface(
                                     color = Color(0xFFFFEBEE),
                                     shape = RoundedCornerShape(50),
-                                    modifier = Modifier.clickable { onUpdateStatus(OrderStatus.CANCELADO) }
+                                    modifier = Modifier
+                                        .heightIn(min = 38.dp)
+                                        .clickable { onRequestCancel() }
                                 ) {
-                                    Text(
-                                        text = "Cancelar ❌",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFC62828),
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Cancelar ❌",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFC62828)
+                                        )
+                                    }
                                 }
                             }
                             OrderStatus.ENTREGADO -> {
                                 Surface(
                                     color = ColorShopSurfaceLow,
                                     shape = RoundedCornerShape(50),
-                                    modifier = Modifier.clickable { onUpdateStatus(OrderStatus.EN_RUTA) }
+                                    modifier = Modifier
+                                        .heightIn(min = 38.dp)
+                                        .clickable { onUpdateStatus(OrderStatus.EN_RUTA) }
                                 ) {
-                                    Text(
-                                        text = "Reabrir 🛵",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ColorShopPrimary,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Reabrir 🛵",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorShopPrimary
+                                        )
+                                    }
                                 }
                             }
                             OrderStatus.CANCELADO -> {
                                 Surface(
                                     color = ColorShopSurfaceLow,
                                     shape = RoundedCornerShape(50),
-                                    modifier = Modifier.clickable { onUpdateStatus(OrderStatus.EN_RUTA) }
+                                    modifier = Modifier
+                                        .heightIn(min = 38.dp)
+                                        .clickable { onUpdateStatus(OrderStatus.EN_RUTA) }
                                 ) {
-                                    Text(
-                                        text = "Reactivar 🛵",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ColorShopPrimary,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                    )
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Reactivar 🛵",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorShopPrimary
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1466,9 +1773,27 @@ private fun TimelineHistoryItem(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val isTransfer = record.paymentMethod == PaymentMethodType.TRANSFER
+                        val (badgeText, badgeBgColor, badgeTextColor) = when (record.paymentMethod) {
+                            PaymentMethodType.TRANSFER -> {
+                                if (record.isPaymentPendingOnDelivery) {
+                                    Triple("Transferencia • Al recibir ⏳", Color(0xFFFFEBD8), Color(0xFFD84315))
+                                } else {
+                                    Triple("Transferencia • Acreditada ✅", ColorShopTertiaryFixed, ColorShopTertiaryBlue)
+                                }
+                            }
+                            PaymentMethodType.POS -> {
+                                if (record.isPaymentPendingOnDelivery) {
+                                    Triple("POS • Cobrar al recibir 💳", Color(0xFFFFEBD8), Color(0xFFD84315))
+                                } else {
+                                    Triple("POS • Cobrado ✅", Color(0xFFE8F5E9), Color(0xFF2E7D32))
+                                }
+                            }
+                            PaymentMethodType.CASH -> {
+                                Triple("Efectivo 💵", ColorShopSurfaceHigh, ColorShopPrimary)
+                            }
+                        }
                         Surface(
-                            color = if (isTransfer) ColorShopTertiaryFixed else ColorShopSurfaceHigh,
+                            color = badgeBgColor,
                             shape = RoundedCornerShape(50)
                         ) {
                             Row(
@@ -1483,14 +1808,14 @@ private fun TimelineHistoryItem(
                                         PaymentMethodType.POS -> Icons.Default.PointOfSale
                                     },
                                     contentDescription = null,
-                                    tint = if (isTransfer) ColorShopTertiaryBlue else ColorShopPrimary,
+                                    tint = badgeTextColor,
                                     modifier = Modifier.size(13.dp)
                                 )
                                 Text(
-                                    text = if (isTransfer) "Transferencia ${record.transferBank.ifBlank { "BAC" }}" else record.paymentMethod.badgeLabel,
+                                    text = badgeText,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isTransfer) ColorShopTertiaryBlue else ColorShopPrimary
+                                    color = badgeTextColor
                                 )
                             }
                         }
@@ -1590,15 +1915,21 @@ private fun TimelineHistoryItem(
                                 color = if (record.isDriverPaid) ColorShopSurfaceHigh else Color(0xFFE65100),
                                 shape = RoundedCornerShape(50),
                                 shadowElevation = if (record.isDriverPaid) 0.dp else 2.dp,
-                                modifier = Modifier.clickable { onToggleDriverPaid() }
+                                modifier = Modifier
+                                    .heightIn(min = 38.dp)
+                                    .clickable { onToggleDriverPaid() }
                             ) {
-                                Text(
-                                    text = if (record.isDriverPaid) "Desmarcar ↩️" else "Marcar Pagado ✅",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (record.isDriverPaid) ColorShopPrimary else Color.White,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                ) {
+                                    Text(
+                                        text = if (record.isDriverPaid) "Desmarcar ↩️" else "Marcar Pagado ✅",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (record.isDriverPaid) ColorShopPrimary else Color.White
+                                    )
+                                }
                             }
                         }
                     }
@@ -1813,7 +2144,7 @@ private fun TimelineHistoryItem(
                                         shape = RoundedCornerShape(50),
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(34.dp)
+                                            .height(38.dp)
                                             .clickable { onSelectInMap() }
                                     ) {
                                         Row(
@@ -1825,12 +2156,12 @@ private fun TimelineHistoryItem(
                                                 imageVector = Icons.Default.Map,
                                                 contentDescription = null,
                                                 tint = ColorShopPrimary,
-                                                modifier = Modifier.size(14.dp)
+                                                modifier = Modifier.size(15.dp)
                                             )
-                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
                                             Text(
                                                 text = "Mapa",
-                                                fontSize = 11.sp,
+                                                fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = ColorShopPrimary
                                             )
@@ -1842,7 +2173,7 @@ private fun TimelineHistoryItem(
                                         shape = RoundedCornerShape(50),
                                         modifier = Modifier
                                             .weight(1.1f)
-                                            .height(34.dp)
+                                            .height(38.dp)
                                             .clickable {
                                                 val bitmap = ReceiptImageGenerator.generateRecordReceiptBitmap(record, config)
                                                 val uri = ReceiptImageGenerator.saveBitmapToShareCache(
@@ -1866,12 +2197,12 @@ private fun TimelineHistoryItem(
                                                 imageVector = Icons.Default.ReceiptLong,
                                                 contentDescription = null,
                                                 tint = Color.White,
-                                                modifier = Modifier.size(14.dp)
+                                                modifier = Modifier.size(15.dp)
                                             )
-                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
                                             Text(
                                                 text = "Recibo 🖼️",
-                                                fontSize = 11.sp,
+                                                fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color.White
                                             )
@@ -1883,7 +2214,7 @@ private fun TimelineHistoryItem(
                                         shape = RoundedCornerShape(50),
                                         modifier = Modifier
                                             .weight(1f)
-                                            .height(34.dp)
+                                            .height(38.dp)
                                             .clickable {
                                                 val clip = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
                                                 clip?.setPrimaryClip(
@@ -1908,12 +2239,12 @@ private fun TimelineHistoryItem(
                                                 imageVector = Icons.Default.ContentCopy,
                                                 contentDescription = null,
                                                 tint = ColorShopDeepPlum,
-                                                modifier = Modifier.size(13.dp)
+                                                modifier = Modifier.size(14.dp)
                                             )
-                                            Spacer(modifier = Modifier.width(3.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
                                             Text(
                                                 text = "Copiar",
-                                                fontSize = 11.sp,
+                                                fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 color = ColorShopDeepPlum
                                             )
@@ -1921,14 +2252,14 @@ private fun TimelineHistoryItem(
                                     }
 
                                     IconButton(
-                                        onClick = onDelete,
-                                        modifier = Modifier.size(32.dp)
+                                        onClick = onRequestDelete,
+                                        modifier = Modifier.size(38.dp)
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.DeleteOutline,
                                             contentDescription = "Eliminar",
                                             tint = Color(0xFFB41340),
-                                            modifier = Modifier.size(18.dp)
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
                                 }

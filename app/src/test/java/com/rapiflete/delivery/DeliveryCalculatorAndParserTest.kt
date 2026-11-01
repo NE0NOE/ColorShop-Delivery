@@ -2,10 +2,12 @@ package com.rapiflete.delivery
 
 import com.rapiflete.delivery.model.CourierDriver
 import com.rapiflete.delivery.model.DistanceCalculationMode
+import com.rapiflete.delivery.model.FrozenDestination
 import com.rapiflete.delivery.model.GeoCoordinate
 import com.rapiflete.delivery.model.PaymentMethodType
 import com.rapiflete.delivery.model.RoundingMode
 import com.rapiflete.delivery.model.RouteResult
+import com.rapiflete.delivery.model.SavedQuoteRecord
 import com.rapiflete.delivery.model.StoreAndPricingConfig
 import com.rapiflete.delivery.model.SurchargeType
 import com.rapiflete.delivery.model.TransferBankType
@@ -436,5 +438,236 @@ class DeliveryCalculatorAndParserTest {
         )
         org.junit.Assert.assertFalse(driverMsg.contains("congelada", ignoreCase = true))
         assertTrue(driverMsg.contains("https://maps.google.com/?q=12.145678,-86.265432"))
+    }
+
+    @Test
+    fun `customer message reflects payment pending on delivery state for transfer and pos`() {
+        val config = StoreAndPricingConfig()
+        val dest = FrozenDestination(
+            coordinate = GeoCoordinate(12.145678, -86.265432),
+            label = "Managua",
+            sourceRawText = "Managua",
+            capturedAtTime = "10:00"
+        )
+        val route = RouteResult(
+            straightLineKm = 3.0,
+            adjustedStraightLineKm = 3.9,
+            osrmDrivingKm = 3.5,
+            osrmDurationMinutes = 10.0,
+            routeGeometry = listOf(config.storeCoordinate, dest.coordinate),
+            usedMode = DistanceCalculationMode.OSRM_DRIVING,
+            effectiveDistanceKm = 3.5
+        )
+        val quote = RoutingAndFareCalculator.calculateQuoteBreakdown(
+            route = route,
+            modeOverride = DistanceCalculationMode.OSRM_DRIVING,
+            config = config,
+            applyOffHours = false,
+            applyHoliday = false,
+            applyRainOrDemand = false
+        )
+
+        // Transferencia PENDIENTE
+        val msgTransferPending = RoutingAndFareCalculator.buildCustomerWhatsAppSummary(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Juan Pérez",
+            paymentMethod = PaymentMethodType.TRANSFER,
+            transferBank = TransferBankType.BAC,
+            isPaymentPendingOnDelivery = true
+        )
+        assertTrue(msgTransferPending.contains("💳 *Método de pago:* Transferencia (BAC) - *Pendiente al recibir entrega*"))
+
+        // Transferencia CONFIRMADA
+        val msgTransferConfirmed = RoutingAndFareCalculator.buildCustomerWhatsAppSummary(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Juan Pérez",
+            paymentMethod = PaymentMethodType.TRANSFER,
+            transferBank = TransferBankType.BAC,
+            isPaymentPendingOnDelivery = false
+        )
+        assertTrue(msgTransferConfirmed.contains("💳 *Método de pago:* Transferencia (BAC) - *Acreditada / Confirmada*"))
+
+        // POS PENDIENTE (datáfono al entregar)
+        val msgPosPending = RoutingAndFareCalculator.buildCustomerWhatsAppSummary(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Juan Pérez",
+            paymentMethod = PaymentMethodType.POS,
+            isPaymentPendingOnDelivery = true
+        )
+        assertTrue(msgPosPending.contains("💳 *Método de pago:* POS / Tarjeta - *Cobro con datáfono al entregar*"))
+
+        // POS YA COBRADO PREVIAMENTE
+        val msgPosPaid = RoutingAndFareCalculator.buildCustomerWhatsAppSummary(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Juan Pérez",
+            paymentMethod = PaymentMethodType.POS,
+            isPaymentPendingOnDelivery = false
+        )
+        assertTrue(msgPosPaid.contains("💳 *Método de pago:* POS / Tarjeta - *Ya cobrado previamente*"))
+    }
+
+    @Test
+    fun `driver dispatch reflects payment pending on delivery and settlement details`() {
+        val config = StoreAndPricingConfig()
+        val dest = FrozenDestination(
+            coordinate = GeoCoordinate(12.145678, -86.265432),
+            label = "Managua",
+            sourceRawText = "Managua",
+            capturedAtTime = "10:00"
+        )
+        val route = RouteResult(
+            straightLineKm = 3.0,
+            adjustedStraightLineKm = 3.9,
+            osrmDrivingKm = 3.5,
+            osrmDurationMinutes = 10.0,
+            routeGeometry = listOf(config.storeCoordinate, dest.coordinate),
+            usedMode = DistanceCalculationMode.OSRM_DRIVING,
+            effectiveDistanceKm = 3.5
+        )
+        val quote = RoutingAndFareCalculator.calculateQuoteBreakdown(
+            route = route,
+            modeOverride = DistanceCalculationMode.OSRM_DRIVING,
+            config = config,
+            applyOffHours = false,
+            applyHoliday = false,
+            applyRainOrDemand = false
+        )
+
+        // 1. Transferencia PENDIENTE
+        val dispatchTransferPending = RoutingAndFareCalculator.buildDriverWhatsAppDispatch(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente Transferencia",
+            productAmount = 500.0,
+            paymentMethod = PaymentMethodType.TRANSFER,
+            transferBank = TransferBankType.BAC,
+            isPaymentPendingOnDelivery = true
+        )
+        assertTrue(dispatchTransferPending.contains("Transferencia PENDIENTE al recibir"))
+        assertTrue(dispatchTransferPending.contains("El cliente transferirá al momento de la entrega al banco BAC"))
+        assertTrue(dispatchTransferPending.contains("Verificar comprobante con el cliente"))
+
+        // 2. Transferencia YA ACREDITADA
+        val dispatchTransferConfirmed = RoutingAndFareCalculator.buildDriverWhatsAppDispatch(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente Transferencia",
+            productAmount = 500.0,
+            paymentMethod = PaymentMethodType.TRANSFER,
+            transferBank = TransferBankType.BAC,
+            isPaymentPendingOnDelivery = false
+        )
+        assertTrue(dispatchTransferConfirmed.contains("Ya acreditado por Transferencia BAC"))
+        assertTrue(dispatchTransferConfirmed.contains("La tienda ColorShop te pagará tu envío"))
+
+        // 3. POS PENDIENTE
+        val dispatchPosPending = RoutingAndFareCalculator.buildDriverWhatsAppDispatch(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente POS",
+            productAmount = 300.0,
+            paymentMethod = PaymentMethodType.POS,
+            isPaymentPendingOnDelivery = true
+        )
+        assertTrue(dispatchPosPending.contains("POS Datáfono PENDIENTE"))
+        assertTrue(dispatchPosPending.contains("Cobrar con datáfono POS de la tienda al cliente el total de"))
+
+        // 4. POS YA COBRADO EN TIENDA
+        val dispatchPosConfirmed = RoutingAndFareCalculator.buildDriverWhatsAppDispatch(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente POS",
+            productAmount = 300.0,
+            paymentMethod = PaymentMethodType.POS,
+            isPaymentPendingOnDelivery = false
+        )
+        assertTrue(dispatchPosConfirmed.contains("Ya cobrado previamente con POS en tienda"))
+        assertTrue(dispatchPosConfirmed.contains("La tienda ColorShop te pagará tu tarifa de envío"))
+    }
+
+    @Test
+    fun `driver settlement note accurately reflects pending vs confirmed status`() {
+        val noteTransferPending = RoutingAndFareCalculator.buildDriverSettlementNote(
+            paymentMethod = PaymentMethodType.TRANSFER,
+            transferBank = TransferBankType.LAFISE,
+            productAmount = 400.0,
+            deliveryFee = 55.0,
+            currencySymbol = "C$",
+            isPaymentPendingOnDelivery = true
+        )
+        assertTrue(noteTransferPending.contains("Transferencia PENDIENTE (Lafise)"))
+        assertTrue(noteTransferPending.contains("455"))
+        assertTrue(noteTransferPending.contains("Verificar comprobante"))
+
+        val noteTransferConfirmed = RoutingAndFareCalculator.buildDriverSettlementNote(
+            paymentMethod = PaymentMethodType.TRANSFER,
+            transferBank = TransferBankType.LAFISE,
+            productAmount = 400.0,
+            deliveryFee = 55.0,
+            currencySymbol = "C$",
+            isPaymentPendingOnDelivery = false
+        )
+        assertTrue(noteTransferConfirmed.contains("Cliente ya pagó a tienda"))
+
+        val notePosPending = RoutingAndFareCalculator.buildDriverSettlementNote(
+            paymentMethod = PaymentMethodType.POS,
+            transferBank = TransferBankType.BAC,
+            productAmount = 200.0,
+            deliveryFee = 45.0,
+            currencySymbol = "C$",
+            isPaymentPendingOnDelivery = true
+        )
+        assertTrue(notePosPending.contains("POS Datáfono PENDIENTE"))
+        assertTrue(notePosPending.contains("Cobrar al cliente C$ 245 con datáfono de la tienda"))
+
+        val notePosConfirmed = RoutingAndFareCalculator.buildDriverSettlementNote(
+            paymentMethod = PaymentMethodType.POS,
+            transferBank = TransferBankType.BAC,
+            productAmount = 200.0,
+            deliveryFee = 45.0,
+            currencySymbol = "C$",
+            isPaymentPendingOnDelivery = false
+        )
+        assertTrue(notePosConfirmed.contains("Cliente ya pagó con datáfono previamente en tienda"))
+    }
+
+    @Test
+    fun `saved quote record models pending payment on delivery state`() {
+        val recordDefault = SavedQuoteRecord(
+            id = "r1",
+            timestamp = "10:00 AM",
+            customerNote = "Cliente 1"
+        )
+        org.junit.Assert.assertFalse(recordDefault.isPaymentPendingOnDelivery)
+
+        val recordPending = recordDefault.copy(
+            isPaymentPendingOnDelivery = true,
+            paymentMethod = PaymentMethodType.TRANSFER
+        )
+        assertTrue(recordPending.isPaymentPendingOnDelivery)
+    }
+
+    @Test
+    fun `delivery ui state models pending payment flag correctly`() {
+        val state = com.rapiflete.delivery.viewmodel.DeliveryUiState()
+        org.junit.Assert.assertFalse(state.isPaymentPendingOnDelivery)
+
+        val pendingTransferState = state.copy(
+            selectedPaymentMethod = PaymentMethodType.TRANSFER,
+            isPaymentPendingOnDelivery = true
+        )
+        assertTrue(pendingTransferState.isPaymentPendingOnDelivery)
     }
 }

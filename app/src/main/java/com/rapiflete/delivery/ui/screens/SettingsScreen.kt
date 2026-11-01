@@ -1,5 +1,6 @@
 package com.rapiflete.delivery.ui.screens
 
+import android.app.TimePickerDialog
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -8,6 +9,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,8 +27,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.DirectionsBike
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
@@ -45,6 +51,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -54,11 +61,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rapiflete.delivery.model.CourierDriver
+import com.rapiflete.delivery.model.DEFAULT_CUSTOMER_MESSAGE_TEMPLATE
+import com.rapiflete.delivery.model.DEFAULT_DRIVER_DISPATCH_TEMPLATE
 import com.rapiflete.delivery.model.RoundingMode
 import com.rapiflete.delivery.model.ShareOutputFormat
 import com.rapiflete.delivery.model.SpecialZoneRule
@@ -72,7 +85,9 @@ import com.rapiflete.delivery.ui.theme.ColorShopPrimary
 import com.rapiflete.delivery.ui.theme.ColorShopSurface
 import com.rapiflete.delivery.ui.theme.ColorShopSurfaceHigh
 import com.rapiflete.delivery.ui.theme.ColorShopSurfaceLow
+import java.util.Locale
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     currentConfig: StoreAndPricingConfig,
@@ -83,10 +98,16 @@ fun SettingsScreen(
     onOpenCouriers: () -> Unit,
     onAddSpecialZone: (String, Double, Boolean) -> Unit,
     onDeleteSpecialZone: (String) -> Unit,
-    onApplyManualSurchargeAmount: (Double) -> Unit
+    onApplyManualSurchargeAmount: (Double) -> Unit = {}
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+
+    var storeName by remember(currentConfig) { mutableStateOf(currentConfig.storeName) }
+    var storeLatText by remember(currentConfig) { mutableStateOf(currentConfig.storeLat.toString()) }
+    var storeLngText by remember(currentConfig) { mutableStateOf(currentConfig.storeLng.toString()) }
+    var storePlusCode by remember(currentConfig) { mutableStateOf(currentConfig.storePlusCode) }
+    var isStoreDataExpanded by remember { mutableStateOf(false) }
 
     var currencySymbol by remember(currentConfig) { mutableStateOf(currentConfig.currencySymbol) }
     var minimumFareText by remember(currentConfig) { mutableStateOf(currentConfig.minimumFare.toString()) }
@@ -113,10 +134,6 @@ fun SettingsScreen(
     var rainType by remember(currentConfig) { mutableStateOf(currentConfig.rainOrHighDemandSurchargeType) }
     var rainValText by remember(currentConfig) { mutableStateOf(currentConfig.rainOrHighDemandSurchargeValue.toString()) }
 
-    var customSurchargeName by remember { mutableStateOf("") }
-    var customSurchargeType by remember { mutableStateOf(SurchargeType.FIXED) }
-    var customSurchargeValueText by remember { mutableStateOf("15.0") }
-
     var newZoneName by remember { mutableStateOf("") }
     var newZonePriceText by remember { mutableStateOf("100.0") }
     var newZoneAppliesExtraKm by remember { mutableStateOf(false) }
@@ -127,7 +144,20 @@ fun SettingsScreen(
     var preferentialThresholdText by remember(currentConfig) { mutableStateOf(currentConfig.preferentialThreshold.toString()) }
     var preferentialDiscountText by remember(currentConfig) { mutableStateOf(currentConfig.preferentialDiscountPercent.toString()) }
 
+    var isTemplatesExpanded by remember { mutableStateOf(false) }
+    var selectedTemplateTab by remember { mutableIntStateOf(0) } // 0 = Cliente, 1 = Motorizado
+    var customerTemplateValue by remember(currentConfig) {
+        mutableStateOf(TextFieldValue(currentConfig.customerMessageTemplate))
+    }
+    var driverTemplateValue by remember(currentConfig) {
+        mutableStateOf(TextFieldValue(currentConfig.driverDispatchTemplate))
+    }
+
     fun buildCurrentConfig(): StoreAndPricingConfig = currentConfig.copy(
+        storeName = storeName.trim().ifBlank { currentConfig.storeName },
+        storeLat = storeLatText.toDoubleOrNull() ?: currentConfig.storeLat,
+        storeLng = storeLngText.toDoubleOrNull() ?: currentConfig.storeLng,
+        storePlusCode = storePlusCode.trim().ifBlank { currentConfig.storePlusCode },
         currencySymbol = currencySymbol,
         minimumFare = minimumFareText.toDoubleOrNull() ?: currentConfig.minimumFare,
         includedKmInMinimum = includedKmText.toDoubleOrNull() ?: currentConfig.includedKmInMinimum,
@@ -151,7 +181,9 @@ fun SettingsScreen(
         defaultShareFormat = defaultShareFormat,
         preferentialAutoPrompt = preferentialAutoPrompt,
         preferentialThreshold = preferentialThresholdText.toDoubleOrNull() ?: currentConfig.preferentialThreshold,
-        preferentialDiscountPercent = preferentialDiscountText.toDoubleOrNull() ?: currentConfig.preferentialDiscountPercent
+        preferentialDiscountPercent = preferentialDiscountText.toDoubleOrNull() ?: currentConfig.preferentialDiscountPercent,
+        customerMessageTemplate = customerTemplateValue.text,
+        driverDispatchTemplate = driverTemplateValue.text
     )
 
     DisposableEffect(Unit) {
@@ -343,6 +375,158 @@ fun SettingsScreen(
                         fontWeight = FontWeight.Medium,
                         color = ColorShopMutedPlum
                     )
+                }
+            }
+
+            // SECCIÓN: 🏪 Datos y Ubicación de Tienda Matriz (Colapsable)
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(26.dp),
+                shadowElevation = 5.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(26.dp))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable { isStoreDataExpanded = !isStoreDataExpanded },
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(ColorShopSurfaceLow),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("🏪", fontSize = 18.sp)
+                            }
+                            Column {
+                                Text(
+                                    text = "Datos y Ubicación de Tienda Matriz",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = ColorShopDeepPlum
+                                )
+                                Text(
+                                    text = if (isStoreDataExpanded) "Punto base para cálculo de rutas" else "$storeName • $storePlusCode",
+                                    fontSize = 11.sp,
+                                    color = ColorShopMutedPlum,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+
+                        IconButton(onClick = { isStoreDataExpanded = !isStoreDataExpanded }) {
+                            Icon(
+                                imageVector = if (isStoreDataExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = if (isStoreDataExpanded) "Colapsar" else "Expandir",
+                                tint = ColorShopPrimary
+                            )
+                        }
+                    }
+
+                    AnimatedVisibility(visible = isStoreDataExpanded) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
+
+                            OutlinedTextField(
+                                value = storeName,
+                                onValueChange = { storeName = it },
+                                label = { Text("Nombre de Tienda / Sucursal Matriz") },
+                                placeholder = { Text("Ej. Tienda Matriz ColorShop") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(16.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ColorShopPrimary,
+                                    unfocusedBorderColor = ColorShopSurfaceHigh,
+                                    focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                                    unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = storeLatText,
+                                    onValueChange = { storeLatText = it },
+                                    label = { Text("Latitud GPS") },
+                                    placeholder = { Text("12.158438") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ColorShopPrimary,
+                                        unfocusedBorderColor = ColorShopSurfaceHigh,
+                                        focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                                        unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+
+                                OutlinedTextField(
+                                    value = storeLngText,
+                                    onValueChange = { storeLngText = it },
+                                    label = { Text("Longitud GPS") },
+                                    placeholder = { Text("-86.305688") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ColorShopPrimary,
+                                        unfocusedBorderColor = ColorShopSurfaceHigh,
+                                        focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                                        unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            OutlinedTextField(
+                                value = storePlusCode,
+                                onValueChange = { storePlusCode = it },
+                                label = { Text("Plus Code Google Maps") },
+                                placeholder = { Text("5M5V+9P Managua") },
+                                singleLine = true,
+                                shape = RoundedCornerShape(16.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ColorShopPrimary,
+                                    unfocusedBorderColor = ColorShopSurfaceHigh,
+                                    focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                                    unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Surface(
+                                color = ColorShopSurfaceLow.copy(alpha = 0.65f),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "ℹ️ Este punto geográfico se utiliza como origen de partida para el cálculo de kilómetros y tarifas de entrega hacia el cliente.",
+                                    fontSize = 11.sp,
+                                    color = ColorShopMutedPlum,
+                                    modifier = Modifier.padding(10.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -844,85 +1028,6 @@ fun SettingsScreen(
                         onValueChanged = { rainValText = it }
                     )
 
-                    // Item 4: Recargo Manual (Personalizado)
-                    Surface(
-                        color = ColorShopSurfaceLow.copy(alpha = 0.45f),
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(18.dp))
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "✏️ Recargo Manual (Personalizado)",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ColorShopDeepPlum
-                                )
-                                Surface(
-                                    color = Color.White,
-                                    shape = RoundedCornerShape(50)
-                                ) {
-                                    Text(
-                                        text = "Personalizado",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ColorShopPrimary,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-
-                            OutlinedTextField(
-                                value = customSurchargeName,
-                                onValueChange = { customSurchargeName = it },
-                                placeholder = { Text("Ej. Espera adicional, Carga pesada...", fontSize = 12.sp) },
-                                singleLine = true,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = ColorShopPrimary,
-                                    unfocusedBorderColor = ColorShopSurfaceHigh,
-                                    focusedContainerColor = Color.White,
-                                    unfocusedContainerColor = Color.White
-                                ),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            StitchSurchargeSegmentedRow(
-                                currencySymbol = currencySymbol,
-                                selectedType = customSurchargeType,
-                                onTypeSelected = { customSurchargeType = it },
-                                valueText = customSurchargeValueText,
-                                onValueChanged = { customSurchargeValueText = it }
-                            )
-
-                            Button(
-                                onClick = {
-                                    val amt = customSurchargeValueText.toDoubleOrNull() ?: 15.0
-                                    onApplyManualSurchargeAmount(amt)
-                                    Toast.makeText(
-                                        context,
-                                        "Recargo manual de $currencySymbol$amt aplicado a la cotización actual",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                },
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("+ Añadir Recargo Manual", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-
                     HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
 
                     // Zonas de Recargo / Aledañas (Ciudad Sandino, Ticuantepe, etc.)
@@ -1193,12 +1298,239 @@ fun SettingsScreen(
                 }
             }
 
+            // Sección Plantillas de Mensajes (Cliente y Motorizado)
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(24.dp),
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isTemplatesExpanded = !isTemplatesExpanded },
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "💬 Plantillas de Mensajes (Cliente y Motorizado)",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopDeepPlum
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Personaliza los textos generados con variables dinámicas",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = ColorShopMutedPlum
+                            )
+                        }
+                        IconButton(onClick = { isTemplatesExpanded = !isTemplatesExpanded }) {
+                            Icon(
+                                imageVector = if (isTemplatesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                tint = ColorShopPrimary
+                            )
+                        }
+                    }
+
+                    AnimatedVisibility(visible = isTemplatesExpanded) {
+                        Column(
+                            modifier = Modifier.padding(top = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            // Selector tipo pestañas/chips entre Cliente y Motorizado
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val tabs = listOf("👤 Mensaje Cliente", "🛵 Despacho Motorizado")
+                                tabs.forEachIndexed { index, label ->
+                                    val isSel = selectedTemplateTab == index
+                                    Surface(
+                                        color = if (isSel) ColorShopPrimary else ColorShopSurfaceLow,
+                                        shape = RoundedCornerShape(14.dp),
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clickable { selectedTemplateTab = index }
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            fontSize = 12.sp,
+                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSel) Color.White else ColorShopDeepPlum,
+                                            modifier = Modifier.padding(vertical = 10.dp),
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Editor de texto (OutlinedTextField) con TextFieldValue para conservar el cursor
+                            val activeValue = if (selectedTemplateTab == 0) customerTemplateValue else driverTemplateValue
+                            OutlinedTextField(
+                                value = activeValue,
+                                onValueChange = { newVal ->
+                                    if (selectedTemplateTab == 0) {
+                                        customerTemplateValue = newVal
+                                    } else {
+                                        driverTemplateValue = newVal
+                                    }
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(260.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ColorShopPrimary,
+                                    unfocusedBorderColor = ColorShopSurfaceHigh,
+                                    focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.25f),
+                                    unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.15f),
+                                    focusedTextColor = ColorShopDeepPlum,
+                                    unfocusedTextColor = ColorShopDeepPlum
+                                ),
+                                textStyle = TextStyle(fontSize = 12.sp, lineHeight = 18.sp),
+                                placeholder = {
+                                    Text("Escribe aquí la plantilla usando {variable}...", fontSize = 12.sp, color = ColorShopMutedPlum)
+                                }
+                            )
+
+                            // Subtítulo de etiquetas dinámicas
+                            Text(
+                                text = "ETIQUETAS DINÁMICAS (Toca una etiqueta para insertarla en la posición del cursor):",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopMutedPlum
+                            )
+
+                            // FlowRow con botones modo etiqueta
+                            val customerTags = listOf(
+                                "{cliente}",
+                                "{telefono_cliente}",
+                                "{direccion}",
+                                "{ubicacion_maps}",
+                                "{distancia}",
+                                "{hora_entrega}",
+                                "{comentarios}",
+                                "{mercaderia}",
+                                "{tarifa_envio}",
+                                "{total}",
+                                "{metodo_pago}",
+                                "{banco}",
+                                "{repartidor}",
+                                "{telefono_repartidor}",
+                                "{horarios_atencion}",
+                                "{nombre_tienda}"
+                            )
+
+                            val driverTags = listOf(
+                                "{cliente}",
+                                "{telefono_cliente}",
+                                "{hora_entrega}",
+                                "{comentarios}",
+                                "{direccion}",
+                                "{ubicacion_maps}",
+                                "{distancia}",
+                                "{mercaderia}",
+                                "{tarifa_envio}",
+                                "{total}",
+                                "{metodo_pago}",
+                                "{banco}",
+                                "{liquidacion_motorizado}",
+                                "{repartidor}",
+                                "{placa_repartidor}",
+                                "{vehiculo_repartidor}"
+                            )
+
+                            val activeTags = if (selectedTemplateTab == 0) customerTags else driverTags
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                activeTags.forEach { tag ->
+                                    Surface(
+                                        color = ColorShopSurfaceLow,
+                                        shape = RoundedCornerShape(12.dp),
+                                        modifier = Modifier
+                                            .border(1.dp, ColorShopPrimary.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                val curr = if (selectedTemplateTab == 0) customerTemplateValue else driverTemplateValue
+                                                val text = curr.text
+                                                val sel = curr.selection
+                                                val start = sel.min.coerceIn(0, text.length)
+                                                val end = sel.max.coerceIn(0, text.length)
+                                                val newText = text.replaceRange(start, end, tag)
+                                                val nextPos = start + tag.length
+                                                val updated = TextFieldValue(
+                                                    text = newText,
+                                                    selection = TextRange(nextPos)
+                                                )
+                                                if (selectedTemplateTab == 0) {
+                                                    customerTemplateValue = updated
+                                                } else {
+                                                    driverTemplateValue = updated
+                                                }
+                                            }
+                                    ) {
+                                        Text(
+                                            text = "+ $tag",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = ColorShopPrimary,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Botón secundario "↺ Restaurar por defecto"
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                Surface(
+                                    color = Color.Transparent,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .border(1.dp, ColorShopMutedPlum.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            if (selectedTemplateTab == 0) {
+                                                customerTemplateValue = TextFieldValue(
+                                                    text = DEFAULT_CUSTOMER_MESSAGE_TEMPLATE,
+                                                    selection = TextRange(DEFAULT_CUSTOMER_MESSAGE_TEMPLATE.length)
+                                                )
+                                            } else {
+                                                driverTemplateValue = TextFieldValue(
+                                                    text = DEFAULT_DRIVER_DISPATCH_TEMPLATE,
+                                                    selection = TextRange(DEFAULT_DRIVER_DISPATCH_TEMPLATE.length)
+                                                )
+                                            }
+                                            Toast.makeText(context, "Plantilla restaurada a los valores por defecto", Toast.LENGTH_SHORT).show()
+                                        }
+                                ) {
+                                    Text(
+                                        text = "↺ Restaurar por defecto",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopMutedPlum,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Botón Principal Guardar Configuración y Tarifas
             Button(
                 onClick = {
                     val updated = buildCurrentConfig()
                     onSaveConfig(updated)
-                    Toast.makeText(context, "Configuración de ColorShop guardada", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Configuración guardada correctamente", Toast.LENGTH_SHORT).show()
                 },
                 shape = RoundedCornerShape(24.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary),
@@ -1232,7 +1564,12 @@ private fun ScheduleDayBox(
     toggleChecked: Boolean = true,
     onToggleChange: (Boolean) -> Unit = {}
 ) {
+    val context = LocalContext.current
     val isDayActive = !showToggle || toggleChecked
+
+    val (openHour, openMin) = remember(openValue) { parseHourMinute(openValue) }
+    val (closeHour, closeMin) = remember(closeValue) { parseHourMinute(closeValue) }
+
     Surface(
         color = if (isDayActive) ColorShopSurfaceLow.copy(alpha = 0.35f) else ColorShopSurfaceLow.copy(alpha = 0.15f),
         shape = RoundedCornerShape(18.dp),
@@ -1290,38 +1627,122 @@ private fun ScheduleDayBox(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    OutlinedTextField(
-                        value = openValue,
-                        onValueChange = onOpenChange,
-                        label = { Text("Apertura (AM)") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = ColorShopPrimary,
-                            unfocusedBorderColor = ColorShopSurfaceHigh,
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
-                    OutlinedTextField(
-                        value = closeValue,
-                        onValueChange = onCloseChange,
-                        label = { Text("Cierre (PM)") },
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = ColorShopPrimary,
-                            unfocusedBorderColor = ColorShopSurfaceHigh,
-                            focusedContainerColor = Color.White,
-                            unfocusedContainerColor = Color.White
-                        ),
-                        modifier = Modifier.weight(1f)
-                    )
+                    // Campo Apertura con TimePickerDialog
+                    Box(modifier = Modifier.weight(1f)) {
+                        OutlinedTextField(
+                            value = openValue,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Apertura") },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.AccessTime,
+                                    contentDescription = "Seleccionar hora apertura",
+                                    tint = ColorShopPrimary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ColorShopPrimary,
+                                unfocusedBorderColor = ColorShopSurfaceHigh,
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    TimePickerDialog(
+                                        context,
+                                        { _, h, m ->
+                                            onOpenChange(formatTime12(h, m))
+                                        },
+                                        openHour,
+                                        openMin,
+                                        false
+                                    ).show()
+                                }
+                        )
+                    }
+
+                    // Campo Cierre con TimePickerDialog
+                    Box(modifier = Modifier.weight(1f)) {
+                        OutlinedTextField(
+                            value = closeValue,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Cierre") },
+                            trailingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.AccessTime,
+                                    contentDescription = "Seleccionar hora cierre",
+                                    tint = ColorShopPrimary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ColorShopPrimary,
+                                unfocusedBorderColor = ColorShopSurfaceHigh,
+                                focusedContainerColor = Color.White,
+                                unfocusedContainerColor = Color.White
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    TimePickerDialog(
+                                        context,
+                                        { _, h, m ->
+                                            onCloseChange(formatTime12(h, m))
+                                        },
+                                        closeHour,
+                                        closeMin,
+                                        false
+                                    ).show()
+                                }
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+private fun parseHourMinute(timeStr: String): Pair<Int, Int> {
+    val clean = timeStr.trim().uppercase(Locale.US)
+    val isPm = clean.endsWith("PM")
+    val isAm = clean.endsWith("AM")
+    val digitsOnly = clean.replace("[^0-9:]".toRegex(), "")
+    val parts = digitsOnly.split(":")
+    if (parts.size >= 2) {
+        var h = parts[0].toIntOrNull() ?: 9
+        val m = parts[1].toIntOrNull() ?: 0
+        if (isPm && h < 12) h += 12
+        if (isAm && h == 12) h = 0
+        return Pair(h.coerceIn(0, 23), m.coerceIn(0, 59))
+    } else if (parts.size == 1 && parts[0].isNotBlank()) {
+        var h = parts[0].toIntOrNull() ?: 9
+        if (isPm && h < 12) h += 12
+        if (isAm && h == 12) h = 0
+        return Pair(h.coerceIn(0, 23), 0)
+    }
+    return Pair(9, 0)
+}
+
+private fun formatTime12(hourOfDay: Int, minute: Int): String {
+    val h12 = if (hourOfDay % 12 == 0) 12 else hourOfDay % 12
+    val amPm = if (hourOfDay >= 12) "PM" else "AM"
+    return String.format(Locale.US, "%02d:%02d %s", h12, minute, amPm)
 }
 
 @Composable

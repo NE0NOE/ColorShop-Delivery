@@ -64,7 +64,9 @@ class PreferencesRepository(context: Context) {
             defaultShareFormat = runCatching { ShareOutputFormat.valueOf(shareFmtName!!) }.getOrDefault(defaults.defaultShareFormat),
             preferentialThreshold = prefs.getString("preferentialThreshold", defaults.preferentialThreshold.toString())?.toDoubleOrNull() ?: defaults.preferentialThreshold,
             preferentialDiscountPercent = prefs.getString("preferentialDiscountPercent", defaults.preferentialDiscountPercent.toString())?.toDoubleOrNull() ?: defaults.preferentialDiscountPercent,
-            preferentialAutoPrompt = prefs.getBoolean("preferentialAutoPrompt", defaults.preferentialAutoPrompt)
+            preferentialAutoPrompt = prefs.getBoolean("preferentialAutoPrompt", defaults.preferentialAutoPrompt),
+            customerMessageTemplate = prefs.getString("customerMessageTemplate", defaults.customerMessageTemplate) ?: defaults.customerMessageTemplate,
+            driverDispatchTemplate = prefs.getString("driverDispatchTemplate", defaults.driverDispatchTemplate) ?: defaults.driverDispatchTemplate
         )
     }
 
@@ -103,6 +105,8 @@ class PreferencesRepository(context: Context) {
             putString("preferentialThreshold", config.preferentialThreshold.toString())
             putString("preferentialDiscountPercent", config.preferentialDiscountPercent.toString())
             putBoolean("preferentialAutoPrompt", config.preferentialAutoPrompt)
+            putString("customerMessageTemplate", config.customerMessageTemplate)
+            putString("driverDispatchTemplate", config.driverDispatchTemplate)
             apply()
         }
     }
@@ -261,7 +265,8 @@ class PreferencesRepository(context: Context) {
                         orderStatus = runCatching { OrderStatus.valueOf(obj.optString("orderStatus")) }.getOrDefault(OrderStatus.EN_RUTA),
                         driverSettlementNote = obj.optString("driverSettlementNote", ""),
                         isDriverPaid = obj.optBoolean("isDriverPaid", runCatching { PaymentMethodType.valueOf(obj.optString("paymentMethod")) }.getOrDefault(PaymentMethodType.CASH) == PaymentMethodType.CASH),
-                        driverPaidAt = obj.optString("driverPaidAt", "")
+                        driverPaidAt = obj.optString("driverPaidAt", ""),
+                        isPaymentPendingOnDelivery = obj.optBoolean("isPaymentPendingOnDelivery", false)
                     )
                 )
             }
@@ -306,6 +311,7 @@ class PreferencesRepository(context: Context) {
                 put("driverSettlementNote", record.driverSettlementNote)
                 put("isDriverPaid", record.isDriverPaid)
                 put("driverPaidAt", record.driverPaidAt)
+                put("isPaymentPendingOnDelivery", record.isPaymentPendingOnDelivery)
             }
             arr.put(obj)
         }

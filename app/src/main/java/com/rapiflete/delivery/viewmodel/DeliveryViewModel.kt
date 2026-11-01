@@ -53,6 +53,7 @@ data class DeliveryUiState(
     val isZoneAutoDetected: Boolean = false,
     val selectedPaymentMethod: PaymentMethodType = PaymentMethodType.CASH,
     val selectedTransferBank: TransferBankType = TransferBankType.BAC,
+    val isPaymentPendingOnDelivery: Boolean = false,
     val couriers: List<CourierDriver> = emptyList(),
     val selectedCourier: CourierDriver? = null,
     val zones: List<SpecialZoneRule> = emptyList(),
@@ -62,6 +63,7 @@ data class DeliveryUiState(
     val showPreferentialRateDialog: Boolean = false,
     val suggestedPreferentialRate: Double = 0.0,
     val isPreferentialApplied: Boolean = false,
+    val isCurrentQuoteSaved: Boolean = false,
     val statusBannerMessage: String? = null,
     val errorMessage: String? = null,
     val history: List<SavedQuoteRecord> = emptyList()
@@ -97,6 +99,36 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
 
     fun onInputTextChanged(newText: String) {
         _uiState.update { it.copy(inputLinkOrText = newText, errorMessage = null) }
+    }
+
+    fun dismissErrorMessage() {
+        _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    fun clearCurrentQuoteAndInputs() {
+        _uiState.update {
+            it.copy(
+                inputLinkOrText = "",
+                customerNote = "",
+                customerPhone = "",
+                orderComments = "",
+                approximateDeliveryTime = "",
+                receiptPhotoUri = "",
+                productAmount = 0.0,
+                productAmountInput = "",
+                manualAdjustment = 0.0,
+                customTotalOverride = null,
+                frozenDestination = null,
+                routeResult = null,
+                quoteBreakdown = null,
+                errorMessage = null,
+                statusBannerMessage = null,
+                isCurrentQuoteSaved = false,
+                isPreferentialApplied = false,
+                showPreferentialRateDialog = false,
+                isPaymentPendingOnDelivery = false
+            )
+        }
     }
 
     fun onCustomerNoteChanged(newNote: String) {
@@ -193,7 +225,21 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
     }
 
     fun selectPaymentMethod(method: PaymentMethodType) {
-        _uiState.update { it.copy(selectedPaymentMethod = method) }
+        val pending = when (method) {
+            PaymentMethodType.CASH -> true
+            PaymentMethodType.POS -> true
+            PaymentMethodType.TRANSFER -> false
+        }
+        _uiState.update {
+            it.copy(
+                selectedPaymentMethod = method,
+                isPaymentPendingOnDelivery = pending
+            )
+        }
+    }
+
+    fun setPaymentPendingOnDelivery(pending: Boolean) {
+        _uiState.update { it.copy(isPaymentPendingOnDelivery = pending) }
     }
 
     fun selectTransferBank(bank: TransferBankType) {
@@ -501,7 +547,8 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             transferBank = state.selectedTransferBank,
             productAmount = productAmt,
             deliveryFee = deliveryFee,
-            currencySymbol = state.config.currencySymbol
+            currencySymbol = state.config.currencySymbol,
+            isPaymentPendingOnDelivery = state.isPaymentPendingOnDelivery
         )
 
         val surchargesList = mutableListOf<String>()
@@ -559,7 +606,8 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             orderStatus = OrderStatus.EN_RUTA,
             driverSettlementNote = settlementNote,
             isDriverPaid = state.selectedPaymentMethod == PaymentMethodType.CASH,
-            driverPaidAt = if (state.selectedPaymentMethod == PaymentMethodType.CASH) "Auto-descontado en efectivo" else ""
+            driverPaidAt = if (state.selectedPaymentMethod == PaymentMethodType.CASH) "Auto-descontado en efectivo" else "",
+            isPaymentPendingOnDelivery = state.isPaymentPendingOnDelivery
         )
 
         val updatedHistory = listOf(record) + state.history
@@ -567,7 +615,8 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
         _uiState.update {
             it.copy(
                 history = updatedHistory,
-                statusBannerMessage = null
+                statusBannerMessage = null,
+                isCurrentQuoteSaved = true
             )
         }
         return true
@@ -608,14 +657,23 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             isFrozen = true,
             sourceType = LocationSourceType.WHATSAPP_SHARE
         )
-        _uiState.update {
-            it.copy(
+        _uiState.update { state ->
+            val restoredCourier = state.couriers.find { it.name.equals(record.courierName, ignoreCase = true) } ?: state.selectedCourier
+            val restoredBank = TransferBankType.entries.find { it.displayName.equals(record.transferBank, ignoreCase = true) } ?: TransferBankType.BAC
+            state.copy(
                 customerNote = record.customerNote,
                 customerPhone = record.customerPhone,
                 orderComments = record.orderComments,
                 approximateDeliveryTime = record.approximateDeliveryTime,
                 receiptPhotoUri = record.receiptPhotoUri,
-                inputLinkOrText = restoredDest.coordinate.toStaticGoogleMapsUrl()
+                productAmount = record.productAmount,
+                productAmountInput = if (record.productAmount > 0) String.format(Locale.US, "%.0f", record.productAmount) else "",
+                selectedPaymentMethod = record.paymentMethod,
+                selectedTransferBank = restoredBank,
+                selectedCourier = restoredCourier,
+                isPaymentPendingOnDelivery = record.isPaymentPendingOnDelivery,
+                inputLinkOrText = restoredDest.coordinate.toStaticGoogleMapsUrl(),
+                isCurrentQuoteSaved = true
             )
         }
         viewModelScope.launch {
@@ -712,6 +770,7 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
                 quoteBreakdown = quote,
                 customTotalOverride = null,
                 isPreferentialApplied = false,
+                isCurrentQuoteSaved = false,
                 showPreferentialRateDialog = shouldPrompt,
                 suggestedPreferentialRate = suggestedRate,
                 isLoadingRouteOrLink = false,
