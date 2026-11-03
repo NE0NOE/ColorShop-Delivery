@@ -199,6 +199,7 @@ class MainActivity : ComponentActivity() {
                                             onDeleteRecord = viewModel::deleteHistoryRecord,
                                             onUpdateOrderStatus = viewModel::updateOrderStatus,
                                             onToggleDriverPaid = viewModel::toggleDriverPaymentStatus,
+                                            onNavigateToQuote = { currentTab = 0 },
                                             onClearAll = viewModel::clearAllHistory
                                         )
                                         2 -> SettingsScreen(

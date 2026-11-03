@@ -36,6 +36,7 @@ import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.AccountBalance
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -55,12 +56,15 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -116,6 +120,7 @@ fun HistoryScreen(
     onDeleteRecord: (String) -> Unit,
     onUpdateOrderStatus: (String, OrderStatus) -> Unit = { _, _ -> },
     onToggleDriverPaid: (String) -> Unit = {},
+    onNavigateToQuote: (() -> Unit)? = null,
     onClearAll: () -> Unit
 ) {
     val context = LocalContext.current
@@ -126,6 +131,7 @@ fun HistoryScreen(
     }
     var selectedDateIso by remember { mutableStateOf(todayIso) }
 
+    var searchQuery by remember { mutableStateOf("") }
     var selectedPaymentFilter by remember { mutableStateOf("ALL") } // ALL, CASH, TRANSFER
     var selectedCourierName by remember { mutableStateOf<String?>(null) }
     var selectedStatusFilter by remember { mutableStateOf<OrderStatus?>(null) }
@@ -264,7 +270,14 @@ fun HistoryScreen(
             .sortedDescending()
     }
 
-    val filteredRecords = remember(recordsForSelectedDate, selectedPaymentFilter, selectedCourierName, selectedStatusFilter) {
+    val filteredRecords = remember(
+        recordsForSelectedDate,
+        selectedPaymentFilter,
+        selectedCourierName,
+        selectedStatusFilter,
+        searchQuery
+    ) {
+        val q = searchQuery.trim().lowercase(Locale.ROOT)
         recordsForSelectedDate.filter { rec ->
             val matchesPayment = when (selectedPaymentFilter) {
                 "CASH" -> rec.paymentMethod == PaymentMethodType.CASH
@@ -274,20 +287,51 @@ fun HistoryScreen(
             val matchesCourier = selectedCourierName == null ||
                 rec.courierName.equals(selectedCourierName, ignoreCase = true)
             val matchesStatus = selectedStatusFilter == null || rec.orderStatus == selectedStatusFilter
-            matchesPayment && matchesCourier && matchesStatus
+
+            val matchesSearch = q.isEmpty() ||
+                rec.customerNote.lowercase(Locale.ROOT).contains(q) ||
+                rec.customerPhone.lowercase(Locale.ROOT).contains(q) ||
+                rec.receiptId.lowercase(Locale.ROOT).contains(q) ||
+                rec.courierName.lowercase(Locale.ROOT).contains(q) ||
+                rec.destinationLabel.lowercase(Locale.ROOT).contains(q)
+
+            matchesPayment && matchesCourier && matchesStatus && matchesSearch
         }
     }
 
-    val displayedRecords = remember(showOnlyUnpaidDriverDeliveries, allUnpaidElectronicDeliveries, filteredRecords, selectedStatusFilter) {
+    val displayedRecords = remember(
+        showOnlyUnpaidDriverDeliveries,
+        allUnpaidElectronicDeliveries,
+        filteredRecords,
+        selectedStatusFilter,
+        searchQuery
+    ) {
+        val q = searchQuery.trim().lowercase(Locale.ROOT)
         if (showOnlyUnpaidDriverDeliveries) {
             allUnpaidElectronicDeliveries.filter { rec ->
                 val matchesStatus = selectedStatusFilter == null || rec.orderStatus == selectedStatusFilter
-                matchesStatus
+                val matchesSearch = q.isEmpty() ||
+                    rec.customerNote.lowercase(Locale.ROOT).contains(q) ||
+                    rec.customerPhone.lowercase(Locale.ROOT).contains(q) ||
+                    rec.receiptId.lowercase(Locale.ROOT).contains(q) ||
+                    rec.courierName.lowercase(Locale.ROOT).contains(q) ||
+                    rec.destinationLabel.lowercase(Locale.ROOT).contains(q)
+                matchesStatus && matchesSearch
             }
         } else {
             filteredRecords
         }
     }
+
+    // Métricas del día para la Hero Card (filtradas por repartidor si se selecciona)
+    val dailyBaseRecords = remember(recordsForSelectedDate, selectedCourierName) {
+        if (selectedCourierName == null) recordsForSelectedDate
+        else recordsForSelectedDate.filter { it.courierName.equals(selectedCourierName, ignoreCase = true) }
+    }
+    val dailyTotalCount = dailyBaseRecords.size
+    val dailyTotalRevenue = dailyBaseRecords.sumOf { it.totalAmount }
+    val dailyInRouteCount = dailyBaseRecords.count { it.orderStatus == OrderStatus.EN_RUTA }
+    val dailyDeliveredCount = dailyBaseRecords.count { it.orderStatus == OrderStatus.ENTREGADO }
 
     val totalAmount = filteredRecords.sumOf { it.totalAmount }
     val totalKm = filteredRecords.sumOf { it.distanceKm }
@@ -472,19 +516,20 @@ fun HistoryScreen(
             Spacer(modifier = Modifier.height(4.dp))
         }
 
-        // Tarjeta de Resumen Diario (3 cuadros tipo Bento de Stitch) con navegación entre días
+        // Hero Card Compacta de Métricas Diarias (Surface con esquinas redondeadas 20.dp, fondo tonal/blanco, divisores verticales sutiles)
         Surface(
             color = Color.White,
-            shape = RoundedCornerShape(24.dp),
-            shadowElevation = 6.dp,
+            shape = RoundedCornerShape(20.dp),
+            shadowElevation = 4.dp,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.padding(vertical = 12.dp, horizontal = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // Fila de encabezado compacta: Selector de fecha + navegación rápida entre días
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -493,42 +538,59 @@ fun HistoryScreen(
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { openNativeDatePicker() }
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(30.dp)
                                 .clip(CircleShape)
-                                .background(ColorShopPrimary)
-                                .clickable { openNativeDatePicker() },
+                                .background(ColorShopPrimary),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.LocalShipping,
                                 contentDescription = null,
                                 tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
-                        Column(
-                            modifier = Modifier.clickable { openNativeDatePicker() }
-                        ) {
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = selectedDateLabel,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = ColorShopDeepPlum
+                                )
+                                if (selectedDateIso == todayIso) {
+                                    Surface(
+                                        color = ColorShopPrimary.copy(alpha = 0.12f),
+                                        shape = RoundedCornerShape(50)
+                                    ) {
+                                        Text(
+                                            text = "HOY",
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = ColorShopPrimary,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
                             Text(
-                                text = selectedDateLabel,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = ColorShopDeepPlum
-                            )
-                            Text(
-                                text = if (selectedDateIso == todayIso) "Resumen del día actual" else "Toque para cambiar de fecha",
+                                text = if (selectedDateIso == todayIso) "Métricas del día actual" else "Toca para cambiar de fecha",
                                 fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
                                 color = ColorShopMutedPlum
                             )
                         }
                     }
 
-                    // Controles para desplazarse al día anterior / siguiente / hoy
+                    // Navegación rápida entre fechas: anterior / hoy / siguiente
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
@@ -537,7 +599,7 @@ fun HistoryScreen(
                             color = ColorShopSurfaceLow,
                             shape = CircleShape,
                             modifier = Modifier
-                                .size(30.dp)
+                                .size(28.dp)
                                 .clickable {
                                     selectedDateIso = shiftDateIsoByDays(selectedDateIso, -1)
                                 }
@@ -547,7 +609,7 @@ fun HistoryScreen(
                                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                                     contentDescription = "Día anterior",
                                     tint = ColorShopDeepPlum,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
@@ -559,11 +621,11 @@ fun HistoryScreen(
                                 modifier = Modifier.clickable { selectedDateIso = todayIso }
                             ) {
                                 Text(
-                                    text = "Ir a Hoy",
+                                    text = "Hoy",
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = ColorShopPrimary,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                             }
                         }
@@ -572,7 +634,7 @@ fun HistoryScreen(
                             color = ColorShopSurfaceLow,
                             shape = CircleShape,
                             modifier = Modifier
-                                .size(30.dp)
+                                .size(28.dp)
                                 .clickable {
                                     selectedDateIso = shiftDateIsoByDays(selectedDateIso, 1)
                                 }
@@ -582,94 +644,83 @@ fun HistoryScreen(
                                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                     contentDescription = "Día siguiente",
                                     tint = ColorShopDeepPlum,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
                     }
                 }
 
-                // Barra indicadora de filtro activo
-                Surface(
-                    color = ColorShopSurfaceLow.copy(alpha = 0.65f),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                // Indicador sutil de filtro por motorizado en métricas
+                if (selectedCourierName != null) {
+                    Surface(
+                        color = ColorShopSurfaceLow.copy(alpha = 0.65f),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.FilterAlt,
-                                contentDescription = null,
-                                tint = ColorShopPrimary,
-                                modifier = Modifier.size(15.dp)
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.FilterAlt,
+                                    contentDescription = null,
+                                    tint = ColorShopPrimary,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = "Filtrando por: $selectedCourierName",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ColorShopPrimary
+                                )
+                            }
                             Text(
-                                text = "Vista métricas:",
-                                fontSize = 11.sp,
-                                color = ColorShopMutedPlum
-                            )
-                            Text(
-                                text = selectedCourierName ?: "Todos los repartidores",
-                                fontSize = 11.sp,
+                                text = "Quitar ✕",
+                                fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = ColorShopPrimary
-                            )
-                        }
-                        if (selectedCourierName != null) {
-                            Text(
-                                text = "Ver todos",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = ColorShopPrimary,
+                                color = ColorShopMutedPlum,
                                 modifier = Modifier.clickable { selectedCourierName = null }
                             )
                         }
                     }
                 }
 
-                // 3 Cuadros Bento: Envíos | Total | Ruta
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                HorizontalDivider(color = ColorShopSurfaceHigh)
+
+                // Tarjeta horizontal tonal unificada y segmentada con las 3 métricas
+                Surface(
+                    color = ColorShopSurfaceLow.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    // Cuadro 1: Envíos
-                    Surface(
-                        color = ColorShopSurfaceLow.copy(alpha = 0.65f),
-                        shape = RoundedCornerShape(18.dp),
+                    Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .height(96.dp)
+                            .fillMaxWidth()
+                            .padding(vertical = 10.dp, horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Segmento 1: Envíos Totales del Día
                         Column(
-                            modifier = Modifier.padding(10.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(26.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(ColorShopSurfaceHigh),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Inventory2,
-                                        contentDescription = null,
-                                        tint = ColorShopPrimary,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.Inventory2,
+                                    contentDescription = null,
+                                    tint = ColorShopPrimary,
+                                    modifier = Modifier.size(13.dp)
+                                )
                                 Text(
                                     text = "Envíos",
                                     fontSize = 11.sp,
@@ -677,133 +728,110 @@ fun HistoryScreen(
                                     color = ColorShopMutedPlum
                                 )
                             }
-                            Column {
-                                Text(
-                                    text = "${filteredRecords.size}",
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = ColorShopDeepPlum
-                                )
-                                Text(
-                                    text = "Completados",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = ColorShopPrimary
-                                )
-                            }
+                            Text(
+                                text = "$dailyTotalCount",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopDeepPlum
+                            )
+                            Text(
+                                text = "$dailyDeliveredCount entregados",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (dailyDeliveredCount > 0) Color(0xFF2E7D32) else ColorShopMutedPlum
+                            )
                         }
-                    }
 
-                    // Cuadro 2: Total (Sólido Magenta)
-                    Surface(
-                        color = ColorShopPrimary,
-                        shape = RoundedCornerShape(18.dp),
-                        shadowElevation = 4.dp,
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(96.dp)
-                    ) {
+                        // Divisor vertical sutil
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(38.dp)
+                                .background(ColorShopOutlineVariant.copy(alpha = 0.4f))
+                        )
+
+                        // Segmento 2: Total Recaudado C$
                         Column(
-                            modifier = Modifier.padding(10.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
+                            modifier = Modifier.weight(1.2f),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(26.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(Color.White.copy(alpha = 0.2f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Payments,
-                                        contentDescription = null,
-                                        tint = Color.White,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                }
-                                Text(
-                                    text = "Total",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = Color.White.copy(alpha = 0.9f)
-                                )
-                            }
-                            Column {
-                                Text(
-                                    text = "$currencySymbol ${totalAmount.toInt()}",
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = Color.White,
-                                    maxLines = 1
+                                Icon(
+                                    imageVector = Icons.Default.Payments,
+                                    contentDescription = null,
+                                    tint = ColorShopPrimary,
+                                    modifier = Modifier.size(13.dp)
                                 )
                                 Text(
-                                    text = if (selectedDateIso == todayIso) "Generado hoy" else "En la fecha",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Medium,
-                                    color = Color.White.copy(alpha = 0.85f)
-                                )
-                            }
-                        }
-                    }
-
-                    // Cuadro 3: Ruta (km)
-                    Surface(
-                        color = ColorShopSurfaceLow.copy(alpha = 0.65f),
-                        shape = RoundedCornerShape(18.dp),
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(96.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(10.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(26.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(ColorShopSurfaceHigh),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.NearMe,
-                                        contentDescription = null,
-                                        tint = ColorShopPrimary,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                }
-                                Text(
-                                    text = "Ruta",
+                                    text = "Recaudado",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold,
                                     color = ColorShopMutedPlum
                                 )
                             }
-                            Column {
-                                Text(
-                                    text = String.format(Locale.US, "%.1f km", totalKm),
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = ColorShopDeepPlum,
-                                    maxLines = 1
+                            Text(
+                                text = "$currencySymbol ${dailyTotalRevenue.toInt()}",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = if (totalKm > 0.0) String.format(Locale.US, "%.1f km ruta", totalKm) else "Total fecha",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = ColorShopMutedPlum
+                            )
+                        }
+
+                        // Divisor vertical sutil
+                        Box(
+                            modifier = Modifier
+                                .width(1.dp)
+                                .height(38.dp)
+                                .background(ColorShopOutlineVariant.copy(alpha = 0.4f))
+                        )
+
+                        // Segmento 3: Pedidos en ruta o pendientes
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.DirectionsBike,
+                                    contentDescription = null,
+                                    tint = if (dailyInRouteCount > 0) Color(0xFFE65100) else Color(0xFF2E7D32),
+                                    modifier = Modifier.size(13.dp)
                                 )
                                 Text(
-                                    text = "Recorrido",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Medium,
+                                    text = "En Ruta",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
                                     color = ColorShopMutedPlum
                                 )
                             }
+                            Text(
+                                text = "$dailyInRouteCount",
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (dailyInRouteCount > 0) Color(0xFFE65100) else Color(0xFF2E7D32)
+                            )
+                            Text(
+                                text = if (dailyInRouteCount > 0) "En camino 🛵" else "Al día ✅",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = if (dailyInRouteCount > 0) Color(0xFFE65100) else Color(0xFF2E7D32)
+                            )
                         }
                     }
                 }
@@ -1036,6 +1064,89 @@ fun HistoryScreen(
                         }
                     }
                 }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Buscador Instantáneo en Tiempo Real
+        Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(16.dp),
+            shadowElevation = 2.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp)
+        ) {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = {
+                    Text(
+                        text = "Buscar cliente, teléfono, #recibo, motorizado...",
+                        fontSize = 13.sp,
+                        color = ColorShopMutedPlum.copy(alpha = 0.75f)
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Buscar",
+                        tint = if (searchQuery.isNotBlank()) ColorShopPrimary else ColorShopMutedPlum,
+                        modifier = Modifier.size(20.dp)
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(
+                            onClick = { searchQuery = "" },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Limpiar búsqueda",
+                                tint = ColorShopMutedPlum,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                },
+                singleLine = true,
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = ColorShopPrimary,
+                    unfocusedBorderColor = Color.Transparent,
+                    focusedContainerColor = Color.White,
+                    unfocusedContainerColor = Color.White,
+                    focusedTextColor = ColorShopDeepPlum,
+                    unfocusedTextColor = ColorShopDeepPlum,
+                    cursorColor = ColorShopPrimary
+                )
+            )
+        }
+
+        if (searchQuery.isNotBlank()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Filtrando por \"$searchQuery\" (${displayedRecords.size} resultados)",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = ColorShopPrimary
+                )
+                Text(
+                    text = "Limpiar ✕",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ColorShopMutedPlum,
+                    modifier = Modifier.clickable { searchQuery = "" }
+                )
             }
         }
 
@@ -1278,12 +1389,12 @@ fun HistoryScreen(
             Spacer(modifier = Modifier.height(8.dp))
         }
 
-        // Línea de Tiempo Vertical de Envíos
+        // Línea de Tiempo Vertical de Envíos / Empty State Expresivo y Amigable
         if (displayedRecords.isEmpty()) {
             Surface(
                 color = Color.White,
-                shape = RoundedCornerShape(20.dp),
-                shadowElevation = 2.dp,
+                shape = RoundedCornerShape(24.dp),
+                shadowElevation = 3.dp,
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp)
@@ -1291,29 +1402,145 @@ fun HistoryScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(24.dp),
+                        .padding(horizontal = 24.dp, vertical = 28.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Inventory2,
-                        contentDescription = null,
-                        tint = ColorShopMutedPlum.copy(alpha = 0.6f),
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Text(
-                        text = if (showOnlyUnpaidDriverDeliveries) "No hay envíos pendientes de pago al motorizado" else "Sin envíos registrados en esta fecha",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ColorShopDeepPlum,
-                        textAlign = TextAlign.Center
-                    )
-                    Text(
-                        text = if (showOnlyUnpaidDriverDeliveries) "Todas las transferencias y cobros con datáfono están al día." else "Los envíos de días anteriores están guardados en sus respectivas fechas. Usa el botón del calendario para consultarlos.",
-                        fontSize = 11.sp,
-                        color = ColorShopMutedPlum,
-                        textAlign = TextAlign.Center
-                    )
+                    // Contenedor circular con ilustración/emoji destacado
+                    Box(
+                        modifier = Modifier
+                            .size(76.dp)
+                            .clip(CircleShape)
+                            .background(ColorShopSurfaceHigh),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = when {
+                                searchQuery.isNotBlank() -> "🔍"
+                                showOnlyUnpaidDriverDeliveries -> "🎉"
+                                else -> "🛵"
+                            },
+                            fontSize = 36.sp
+                        )
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        val title = when {
+                            searchQuery.isNotBlank() -> "No encontramos pedidos para \"$searchQuery\""
+                            showOnlyUnpaidDriverDeliveries -> "¡Cuentas al día con motorizados!"
+                            else -> "Sin envíos registrados en esta fecha"
+                        }
+
+                        val subtitle = when {
+                            searchQuery.isNotBlank() -> "Intenta buscar por otro nombre, teléfono o código #recibo, o limpia la barra de búsqueda."
+                            showOnlyUnpaidDriverDeliveries -> "Todas las transferencias y cobros con datáfono están liquidados al 100%."
+                            selectedDateIso == todayIso -> "Aún no se han generado envíos el día de hoy. ¡Crea una cotización para registrar la primera entrega!"
+                            else -> "No hay pedidos guardados en $selectedDateLabel. Consulta otras fechas desde el calendario superior."
+                        }
+
+                        Text(
+                            text = title,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = ColorShopDeepPlum,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Text(
+                            text = subtitle,
+                            fontSize = 12.sp,
+                            color = ColorShopMutedPlum,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 17.sp,
+                            modifier = Modifier.padding(horizontal = 12.dp)
+                        )
+                    }
+
+                    // Botones de acción según el estado
+                    when {
+                        searchQuery.isNotBlank() -> {
+                            Surface(
+                                color = ColorShopSurfaceHigh,
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier
+                                    .height(42.dp)
+                                    .clickable { searchQuery = "" }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 18.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = null,
+                                        tint = ColorShopPrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = "Limpiar búsqueda",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopPrimary
+                                    )
+                                }
+                            }
+                        }
+                        showOnlyUnpaidDriverDeliveries -> {
+                            Surface(
+                                color = ColorShopSurfaceHigh,
+                                shape = RoundedCornerShape(50),
+                                modifier = Modifier
+                                    .height(42.dp)
+                                    .clickable { showOnlyUnpaidDriverDeliveries = false }
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(horizontal = 18.dp)
+                                ) {
+                                    Text(
+                                        text = "Ver vista normal por fecha",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopPrimary
+                                    )
+                                }
+                            }
+                        }
+                        else -> {
+                            Button(
+                                onClick = {
+                                    onNavigateToQuote?.invoke()
+                                },
+                                shape = RoundedCornerShape(50),
+                                colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary),
+                                modifier = Modifier
+                                    .height(46.dp)
+                                    .shadow(4.dp, RoundedCornerShape(50), ambientColor = ColorShopPrimary, spotColor = ColorShopPrimary)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Add,
+                                        contentDescription = null,
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "+ Nueva Cotización",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
         } else {

@@ -3,6 +3,12 @@ package com.rapiflete.delivery.ui.screens
 import android.app.TimePickerDialog
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -63,6 +69,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
@@ -81,10 +88,14 @@ import com.rapiflete.delivery.ui.components.ColorShopTopBar
 import com.rapiflete.delivery.ui.theme.ColorShopDeepPlum
 import com.rapiflete.delivery.ui.theme.ColorShopMagenta
 import com.rapiflete.delivery.ui.theme.ColorShopMutedPlum
+import com.rapiflete.delivery.ui.theme.ColorShopPinkPill
 import com.rapiflete.delivery.ui.theme.ColorShopPrimary
 import com.rapiflete.delivery.ui.theme.ColorShopSurface
 import com.rapiflete.delivery.ui.theme.ColorShopSurfaceHigh
 import com.rapiflete.delivery.ui.theme.ColorShopSurfaceLow
+import com.rapiflete.delivery.ui.theme.ColorShopTertiaryBlue
+import com.rapiflete.delivery.ui.theme.ColorShopTertiaryFixed
+import com.rapiflete.delivery.util.RoutingAndFareCalculator
 import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -145,6 +156,7 @@ fun SettingsScreen(
     var preferentialDiscountText by remember(currentConfig) { mutableStateOf(currentConfig.preferentialDiscountPercent.toString()) }
 
     var isTemplatesExpanded by remember { mutableStateOf(false) }
+    var showLivePreview by remember { mutableStateOf(false) }
     var selectedTemplateTab by remember { mutableIntStateOf(0) } // 0 = Cliente, 1 = Motorizado
     var customerTemplateValue by remember(currentConfig) {
         mutableStateOf(TextFieldValue(currentConfig.customerMessageTemplate))
@@ -192,12 +204,87 @@ fun SettingsScreen(
         }
     }
 
-    Column(
+    val sampleVariables = remember(
+        selectedTemplateTab,
+        currencySymbol,
+        storeName,
+        weekdayOpen,
+        weekdayClose,
+        satOpen,
+        satClose
+    ) {
+        if (selectedTemplateTab == 0) {
+            mapOf(
+                "cliente" to "María Pérez",
+                "telefono_cliente" to "+505 8888-1234",
+                "direccion" to "Colonia Los Robles, Casa #42, de la Vicky 2c al lago",
+                "ubicacion_maps" to "https://maps.google.com/?q=12.1364,-86.2513",
+                "distancia" to "4.20 km",
+                "hora_entrega" to "02:30 PM",
+                "comentarios" to "Tocar timbre blanco, portón negro",
+                "mercaderia" to "$currencySymbol 350.00",
+                "tarifa_envio" to "• Tarifa mínima envío (incluye 3.0 km): $currencySymbol 100.00\n• Tarifa de distancia (1.20 km × $currencySymbol 20.00/km): +$currencySymbol 24.00",
+                "total" to "GRAN TOTAL A PAGAR: $currencySymbol 474.00",
+                "metodo_pago" to "Efectivo al recibir",
+                "banco" to "BAC Credomatic",
+                "repartidor" to "Walter Martínez",
+                "telefono_repartidor" to "+505 7777-4321",
+                "horarios_atencion" to "Lun - Vie: $weekdayOpen - $weekdayClose | Sáb: $satOpen - $satClose",
+                "nombre_tienda" to storeName.ifBlank { "ColorShop Nicaragua" }
+            )
+        } else {
+            mapOf(
+                "cliente" to "María Pérez",
+                "telefono_cliente" to "+505 8888-1234",
+                "hora_entrega" to "02:30 PM",
+                "comentarios" to "Tocar timbre blanco, portón negro",
+                "direccion" to "Colonia Los Robles, Casa #42, de la Vicky 2c al lago",
+                "ubicacion_maps" to "https://maps.google.com/?q=12.1364,-86.2513",
+                "distancia" to "4.20 km",
+                "mercaderia" to "$currencySymbol 350.00",
+                "tarifa_envio" to "$currencySymbol 124.00",
+                "total" to "$currencySymbol 474.00 (Efectivo al cliente)",
+                "metodo_pago" to "Efectivo",
+                "banco" to "BAC Credomatic",
+                "liquidacion_motorizado" to "Cobro Efectivo al cliente: $currencySymbol 474.00. Te descuentas tu envío ($currencySymbol 124.00). Depositar/liquidar a tienda por mercadería: $currencySymbol 350.00.",
+                "repartidor" to "Walter Martínez",
+                "placa_repartidor" to "M-142857",
+                "vehiculo_repartidor" to "Moto Bajaj Pulsar 150 Roja",
+                "horarios_atencion" to "Lun - Vie: $weekdayOpen - $weekdayClose",
+                "nombre_tienda" to storeName.ifBlank { "ColorShop Nicaragua" }
+            )
+        }
+    }
+
+    val activeTemplateText = if (selectedTemplateTab == 0) customerTemplateValue.text else driverTemplateValue.text
+    val livePreviewResolved = remember(activeTemplateText, sampleVariables) {
+        RoutingAndFareCalculator.resolveTemplate(activeTemplateText, sampleVariables)
+    }
+
+    val hasUnsavedChanges = remember(
+        storeName, storeLatText, storeLngText, storePlusCode,
+        currencySymbol, minimumFareText, includedKmText, costPerExtraKmText,
+        weekdayOpen, weekdayClose, saturdayEnabled, satOpen, satClose,
+        sundayEnabled, sunOpen, sunClose, autoDetectOffHours,
+        offHoursType, offHoursValText, holidayType, holidayValText,
+        rainType, rainValText, roundingMode, defaultShareFormat,
+        preferentialAutoPrompt, preferentialThresholdText, preferentialDiscountText,
+        customerTemplateValue.text, driverTemplateValue.text,
+        currentConfig
+    ) {
+        buildCurrentConfig() != currentConfig
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(ColorShopSurface)
-            .verticalScroll(scrollState)
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(scrollState)
+        ) {
         ColorShopTopBar(showQuickSearchButton = false)
 
         Column(
@@ -264,12 +351,29 @@ fun SettingsScreen(
                                 modifier = Modifier.size(22.dp)
                             )
                         }
-                        Text(
-                            text = "Gestión de Repartidores",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = ColorShopDeepPlum
-                        )
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "Gestión de Repartidores",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = ColorShopDeepPlum
+                                )
+                                CategoryBadge(
+                                    text = "Flota",
+                                    containerColor = ColorShopTertiaryFixed,
+                                    contentColor = ColorShopTertiaryBlue
+                                )
+                            }
+                            Text(
+                                text = "${couriers.size} motorizados registrados",
+                                fontSize = 11.sp,
+                                color = ColorShopMutedPlum
+                            )
+                        }
                     }
 
                     Button(
@@ -316,12 +420,22 @@ fun SettingsScreen(
                             Text("📄", fontSize = 18.sp)
                         }
                         Column {
-                            Text(
-                                text = "Formato de Recibo / Compartir",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = ColorShopDeepPlum
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "Formato de Recibo / Compartir",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = ColorShopDeepPlum
+                                )
+                                CategoryBadge(
+                                    text = "Recibo Digital",
+                                    containerColor = ColorShopPinkPill.copy(alpha = 0.5f),
+                                    contentColor = ColorShopPrimary
+                                )
+                            }
                             Text(
                                 text = "Elige si enviar cotizaciones y comprobantes como texto o como imagen",
                                 fontSize = 11.sp,
@@ -414,12 +528,22 @@ fun SettingsScreen(
                                 Text("🏪", fontSize = 18.sp)
                             }
                             Column {
-                                Text(
-                                    text = "Datos y Ubicación de Tienda Matriz",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = ColorShopDeepPlum
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Tienda Matriz y Origen GPS",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = ColorShopDeepPlum
+                                    )
+                                    CategoryBadge(
+                                        text = "Tienda Matriz",
+                                        containerColor = ColorShopSurfaceHigh,
+                                        contentColor = ColorShopPrimary
+                                    )
+                                }
                                 Text(
                                     text = if (isStoreDataExpanded) "Punto base para cálculo de rutas" else "$storeName • $storePlusCode",
                                     fontSize = 11.sp,
@@ -555,12 +679,22 @@ fun SettingsScreen(
                             Text("⚡", fontSize = 16.sp)
                         }
                         Column {
-                            Text(
-                                text = "Tarifas y Costo Mínimo",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = ColorShopDeepPlum
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "Tarifas Base y Costo Mínimo",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = ColorShopDeepPlum
+                                )
+                                CategoryBadge(
+                                    text = "Tarifas Base",
+                                    containerColor = Color(0xFFFEF3C7),
+                                    contentColor = Color(0xFFB45309)
+                                )
+                            }
                             Text(
                                 text = "Reglas base de cobro por distancia",
                                 fontSize = 11.sp,
@@ -743,12 +877,22 @@ fun SettingsScreen(
                             Text("⭐", fontSize = 16.sp)
                         }
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Tarifa Preferencial por Distancia",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = ColorShopDeepPlum
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "Tarifa Preferencial por Distancia",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = ColorShopDeepPlum
+                                )
+                                CategoryBadge(
+                                    text = "Descuento Inteligente",
+                                    containerColor = Color(0xFFE0E7FF),
+                                    contentColor = Color(0xFF4338CA)
+                                )
+                            }
                             Text(
                                 text = "Aviso emergente sugerido cuando el precio del envío excede lo razonable",
                                 fontSize = 11.sp,
@@ -906,12 +1050,22 @@ fun SettingsScreen(
                             Text("🕒", fontSize = 16.sp)
                         }
                         Column {
-                            Text(
-                                text = "Horario y Recargos Automáticos",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = ColorShopDeepPlum
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "Horarios de Atención y Recargos",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = ColorShopDeepPlum
+                                )
+                                CategoryBadge(
+                                    text = "Horarios de Atención",
+                                    containerColor = Color(0xFFEDE9FE),
+                                    contentColor = Color(0xFF6D28D9)
+                                )
+                            }
                             Text(
                                 text = "Tarificación por nocturnidad y eventos",
                                 fontSize = 11.sp,
@@ -1050,12 +1204,22 @@ fun SettingsScreen(
                                 Text("📍", fontSize = 14.sp)
                             }
                             Column {
-                                Text(
-                                    text = "Zonas de Recargo / Aledañas",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ColorShopDeepPlum
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Zonas de Recargo / Aledañas",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopDeepPlum
+                                    )
+                                    CategoryBadge(
+                                        text = "Zonas Especiales",
+                                        containerColor = Color(0xFFE0F2FE),
+                                        contentColor = Color(0xFF0369A1)
+                                    )
+                                }
                                 Text(
                                     text = "Tarifas planas o bases para municipios y zonas distantes",
                                     fontSize = 10.sp,
@@ -1313,20 +1477,45 @@ fun SettingsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "💬 Plantillas de Mensajes (Cliente y Motorizado)",
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = ColorShopDeepPlum
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "Personaliza los textos generados con variables dinámicas",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = ColorShopMutedPlum
-                            )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(ColorShopSurfaceLow),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("💬", fontSize = 18.sp)
+                            }
+                            Column {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "Plantillas de Mensajes",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = ColorShopDeepPlum
+                                    )
+                                    CategoryBadge(
+                                        text = "WhatsApp",
+                                        containerColor = Color(0xFFDCFCE7),
+                                        contentColor = Color(0xFF15803D)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "Personaliza los textos generados con variables dinámicas",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = ColorShopMutedPlum
+                                )
+                            }
                         }
                         IconButton(onClick = { isTemplatesExpanded = !isTemplatesExpanded }) {
                             Icon(
@@ -1342,31 +1531,78 @@ fun SettingsScreen(
                             modifier = Modifier.padding(top = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(14.dp)
                         ) {
-                            // Selector tipo pestañas/chips entre Cliente y Motorizado
+                            // Selector tipo pestañas/chips entre Cliente y Motorizado + Botón interactivo Vista Previa en Vivo
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                val tabs = listOf("👤 Mensaje Cliente", "🛵 Despacho Motorizado")
-                                tabs.forEachIndexed { index, label ->
-                                    val isSel = selectedTemplateTab == index
-                                    Surface(
-                                        color = if (isSel) ColorShopPrimary else ColorShopSurfaceLow,
-                                        shape = RoundedCornerShape(14.dp),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .clickable { selectedTemplateTab = index }
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    val tabs = listOf("👤 Cliente", "🛵 Motorizado")
+                                    tabs.forEachIndexed { index, label ->
+                                        val isSel = selectedTemplateTab == index
+                                        Surface(
+                                            color = if (isSel) ColorShopPrimary else ColorShopSurfaceLow,
+                                            shape = RoundedCornerShape(12.dp),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { selectedTemplateTab = index }
+                                        ) {
+                                            Text(
+                                                text = label,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                                color = if (isSel) Color.White else ColorShopDeepPlum,
+                                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                                                textAlign = TextAlign.Center,
+                                                maxLines = 1
+                                            )
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                // Toggle interactivo: 👁️ Vista Previa en Vivo
+                                Surface(
+                                    color = if (showLivePreview) Color(0xFFDCFCE7) else ColorShopSurfaceLow,
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier
+                                        .border(
+                                            1.dp,
+                                            if (showLivePreview) Color(0xFF16A34A) else ColorShopSurfaceHigh,
+                                            RoundedCornerShape(12.dp)
+                                        )
+                                        .clickable { showLivePreview = !showLivePreview }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Text(
-                                            text = label,
-                                            fontSize = 12.sp,
-                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSel) Color.White else ColorShopDeepPlum,
-                                            modifier = Modifier.padding(vertical = 10.dp),
-                                            textAlign = TextAlign.Center
+                                            text = if (showLivePreview) "👁️ Ocultar Previa" else "👁️ Vista Previa en Vivo",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = if (showLivePreview) Color(0xFF15803D) else ColorShopPrimary
                                         )
                                     }
                                 }
+                            }
+
+                            // Vista Previa en Vivo con estilo WhatsApp
+                            AnimatedVisibility(
+                                visible = showLivePreview,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
+                                WhatsAppPreviewBubble(
+                                    isCustomer = selectedTemplateTab == 0,
+                                    resolvedText = livePreviewResolved
+                                )
                             }
 
                             // Editor de texto (OutlinedTextField) con TextFieldValue para conservar el cursor
@@ -1547,7 +1783,272 @@ fun SettingsScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(80.dp))
+            Spacer(modifier = Modifier.height(110.dp))
+        }
+    }
+
+    // Barra Flotante Sticky de Guardado Accesible
+    AnimatedVisibility(
+        visible = hasUnsavedChanges || scrollState.value > 150,
+        enter = fadeIn() + slideInVertically { it },
+        exit = fadeOut() + slideOutVertically { it },
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 14.dp)
+    ) {
+        Surface(
+            color = Color.White.copy(alpha = 0.97f),
+            shape = RoundedCornerShape(22.dp),
+            shadowElevation = 8.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(
+                    width = 1.dp,
+                    color = if (hasUnsavedChanges) ColorShopPrimary.copy(alpha = 0.5f) else ColorShopSurfaceHigh,
+                    shape = RoundedCornerShape(22.dp)
+                )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (hasUnsavedChanges) Color(0xFFFEF3C7) else ColorShopSurfaceLow
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (hasUnsavedChanges) "⚠️" else "💾",
+                            fontSize = 16.sp
+                        )
+                    }
+                    Column {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = if (hasUnsavedChanges) "Cambios pendientes" else "Configuración",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (hasUnsavedChanges) Color(0xFFB45309) else ColorShopDeepPlum
+                            )
+                            if (hasUnsavedChanges) {
+                                Surface(
+                                    color = Color(0xFFFDE68A),
+                                    shape = RoundedCornerShape(50)
+                                ) {
+                                    Text(
+                                        text = "POR GUARDAR",
+                                        fontSize = 8.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color(0xFF92400E),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Text(
+                            text = if (hasUnsavedChanges) "Pulsa para aplicar tarifas" else "Listo para guardar",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = ColorShopMutedPlum
+                        )
+                    }
+                }
+
+                Button(
+                    onClick = {
+                        val updated = buildCurrentConfig()
+                        onSaveConfig(updated)
+                        Toast.makeText(context, "Configuración guardada correctamente", Toast.LENGTH_SHORT).show()
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (hasUnsavedChanges) ColorShopPrimary else ColorShopDeepPlum
+                    ),
+                    modifier = Modifier.height(42.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Guardar",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+}
+
+@Composable
+private fun CategoryBadge(
+    text: String,
+    containerColor: Color = ColorShopSurfaceHigh,
+    contentColor: Color = ColorShopPrimary
+) {
+    Surface(
+        color = containerColor,
+        shape = RoundedCornerShape(50)
+    ) {
+        Text(
+            text = text,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = contentColor,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.5.dp)
+        )
+    }
+}
+
+@Composable
+private fun WhatsAppPreviewBubble(
+    isCustomer: Boolean,
+    resolvedText: String
+) {
+    Surface(
+        color = Color(0xFFECE5DD), // Fondo realista de chat WhatsApp
+        shape = RoundedCornerShape(20.dp),
+        shadowElevation = 3.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, Color(0xFFD1D7DB), RoundedCornerShape(20.dp))
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            // Cabecera del chat simulado
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF25D366)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("💬", fontSize = 13.sp)
+                    }
+                    Column {
+                        Text(
+                            text = if (isCustomer) "WhatsApp Cliente (Chat)" else "WhatsApp Motorizado (Despacho)",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF075E54)
+                        )
+                        Text(
+                            text = "🟢 Simulación en vivo con datos realistas",
+                            fontSize = 10.sp,
+                            color = Color(0xFF54656F)
+                        )
+                    }
+                }
+
+                Surface(
+                    color = Color(0xFFD9FDD3),
+                    shape = RoundedCornerShape(50)
+                ) {
+                    Text(
+                        text = "EN VIVO",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF075E54),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            // Burbuja de mensaje de WhatsApp (Mensaje Enviado)
+            Surface(
+                color = Color(0xFFE7FFDB), // Verde oficial WhatsApp #E7FFDB
+                shape = RoundedCornerShape(
+                    topStart = 16.dp,
+                    topEnd = 4.dp,
+                    bottomStart = 16.dp,
+                    bottomEnd = 16.dp
+                ),
+                shadowElevation = 1.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(
+                        width = 1.dp,
+                        color = Color(0xFFBCE7B0),
+                        shape = RoundedCornerShape(
+                            topStart = 16.dp,
+                            topEnd = 4.dp,
+                            bottomStart = 16.dp,
+                            bottomEnd = 16.dp
+                        )
+                    )
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = resolvedText.ifBlank { "(La plantilla está vacía)" },
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp,
+                        color = Color(0xFF111B21),
+                        fontFamily = FontFamily.Default
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "14:32",
+                            fontSize = 10.sp,
+                            color = Color(0xFF667781)
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "✓✓",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF53BDEB) // Doble check azul WhatsApp
+                        )
+                    }
+                }
+            }
+
+            Text(
+                text = "ℹ️ Al editar la plantilla abajo, esta burbuja se actualiza al instante con los datos de prueba.",
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color(0xFF64748B),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }

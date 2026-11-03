@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -255,8 +256,8 @@ fun CouriersScreen(
                 )
                 CourierStatBox(
                     icon = Icons.Default.CheckCircle,
-                    iconBg = ColorShopSurfaceHigh,
-                    iconTint = ColorShopPrimary,
+                    iconBg = Color(0xFFE8F5E9),
+                    iconTint = Color(0xFF2E7D32),
                     value = "${couriers.count { it.status == CourierStatus.AVAILABLE }}",
                     label = "Disponibles",
                     modifier = Modifier.weight(1f)
@@ -833,7 +834,7 @@ fun CouriersScreen(
                                 CourierStatus.entries.forEach { st ->
                                     val isSel = editStatus == st
                                     val activeColor = when (st) {
-                                        CourierStatus.AVAILABLE -> ColorShopPrimary
+                                        CourierStatus.AVAILABLE -> Color(0xFF2E7D32)
                                         CourierStatus.ON_ROUTE -> ColorShopTertiaryBlue
                                         CourierStatus.OFF_DUTY -> ColorShopMutedPlum
                                     }
@@ -1055,10 +1056,24 @@ private fun CourierDirectoryCard(
     onDeleteRequest: () -> Unit = {}
 ) {
     val context = LocalContext.current
+    val isAvailable = courier.status == CourierStatus.AVAILABLE
+
+    val cardBg = if (isAvailable) Color.White else Color(0xFFF9FAFB)
+    val cardBorder = if (isAvailable) {
+        BorderStroke(1.5.dp, Color(0xFF2E7D32))
+    } else {
+        BorderStroke(1.dp, Color(0xFFE5E7EB))
+    }
+    val cardElevation = if (isAvailable) 4.dp else 1.dp
+
+    val avatarBg = if (isAvailable) Color(0xFFE8F5E9) else ColorShopSurfaceHigh
+    val avatarText = if (isAvailable) Color(0xFF2E7D32) else ColorShopMutedPlum
+
     Surface(
-        color = Color.White,
+        color = cardBg,
         shape = RoundedCornerShape(22.dp),
-        shadowElevation = 4.dp,
+        border = cardBorder,
+        shadowElevation = cardElevation,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -1078,14 +1093,14 @@ private fun CourierDirectoryCard(
                         modifier = Modifier
                             .size(46.dp)
                             .clip(CircleShape)
-                            .background(ColorShopSurfaceHigh),
+                            .background(avatarBg),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = courier.initials,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.ExtraBold,
-                            color = ColorShopPrimary
+                            color = avatarText
                         )
                     }
                     Column {
@@ -1097,17 +1112,17 @@ private fun CourierDirectoryCard(
                                 text = courier.name,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = ColorShopDeepPlum
+                                color = if (isAvailable) ColorShopDeepPlum else ColorShopDeepPlum.copy(alpha = 0.85f)
                             )
                             Surface(
-                                color = ColorShopSurfaceHigh,
+                                color = if (isAvailable) Color(0xFFE8F5E9) else ColorShopSurfaceHigh,
                                 shape = RoundedCornerShape(50)
                             ) {
                                 Text(
                                     text = courier.badgeTag,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = ColorShopPrimary,
+                                    color = if (isAvailable) Color(0xFF2E7D32) else ColorShopPrimary,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                 )
                             }
@@ -1194,7 +1209,7 @@ private fun CourierDirectoryCard(
                 }
             }
 
-            // Barra de Estado y Botones de Llamada / WhatsApp
+            // Barra de Estado y Gestión (Editar / Eliminar)
             Surface(
                 color = ColorShopSurfaceLow.copy(alpha = 0.65f),
                 shape = RoundedCornerShape(14.dp),
@@ -1208,7 +1223,7 @@ private fun CourierDirectoryCard(
                     var statusMenuExpanded by remember { mutableStateOf(false) }
                     val currentStatus = courier.status
                     val (statusColor, statusBg) = when (currentStatus) {
-                        CourierStatus.AVAILABLE -> Pair(ColorShopPrimary, ColorShopPrimary.copy(alpha = 0.12f))
+                        CourierStatus.AVAILABLE -> Pair(Color(0xFF2E7D32), Color(0xFFE8F5E9))
                         CourierStatus.ON_ROUTE -> Pair(ColorShopTertiaryBlue, ColorShopTertiaryBlue.copy(alpha = 0.12f))
                         CourierStatus.OFF_DUTY -> Pair(ColorShopMutedPlum, ColorShopMutedPlum.copy(alpha = 0.12f))
                     }
@@ -1251,7 +1266,7 @@ private fun CourierDirectoryCard(
                         ) {
                             CourierStatus.entries.forEach { st ->
                                 val stColor = when (st) {
-                                    CourierStatus.AVAILABLE -> ColorShopPrimary
+                                    CourierStatus.AVAILABLE -> Color(0xFF2E7D32)
                                     CourierStatus.ON_ROUTE -> ColorShopTertiaryBlue
                                     CourierStatus.OFF_DUTY -> ColorShopMutedPlum
                                 }
@@ -1301,56 +1316,9 @@ private fun CourierDirectoryCard(
 
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         Surface(
-                            color = Color.White,
-                            shape = CircleShape,
-                            shadowElevation = 2.dp,
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clickable {
-                                    val cleanTel = courier.phone.filter { it.isDigit() }
-                                    val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:+505$cleanTel"))
-                                    context.startActivity(dialIntent)
-                                }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Default.Call,
-                                    contentDescription = "Llamar",
-                                    tint = ColorShopPrimary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-
-                        Surface(
-                            color = Color.White,
-                            shape = CircleShape,
-                            shadowElevation = 2.dp,
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clickable {
-                                    val cleanTel = courier.phone.filter { it.isDigit() }
-                                    val waIntent = Intent(
-                                        Intent.ACTION_VIEW,
-                                        Uri.parse("https://wa.me/505$cleanTel")
-                                    )
-                                    context.startActivity(waIntent)
-                                }
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Chat,
-                                    contentDescription = "WhatsApp",
-                                    tint = ColorShopPrimary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
-
-                        Surface(
                             color = ColorShopSurfaceLow,
                             shape = CircleShape,
-                            shadowElevation = 2.dp,
+                            shadowElevation = 1.dp,
                             modifier = Modifier
                                 .size(32.dp)
                                 .clickable { onEditRequest() }
@@ -1368,7 +1336,7 @@ private fun CourierDirectoryCard(
                         Surface(
                             color = Color(0xFFFFEBEE),
                             shape = CircleShape,
-                            shadowElevation = 2.dp,
+                            shadowElevation = 1.dp,
                             modifier = Modifier
                                 .size(32.dp)
                                 .clickable { onDeleteRequest() }
@@ -1383,6 +1351,89 @@ private fun CourierDirectoryCard(
                             }
                         }
                     }
+                }
+            }
+
+            // Botones Rápidos de Acción Directa: 📞 Llamar y 💬 WhatsApp
+            val rawDigits = courier.phone.filter { it.isDigit() }
+            val cleanPhone = if (rawDigits.startsWith("505")) rawDigits else "505$rawDigits"
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 📞 Llamar directo
+                Button(
+                    onClick = {
+                        val dialIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${courier.phone}"))
+                        try {
+                            context.startActivity(dialIntent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "No se pudo iniciar la llamada", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isAvailable) Color(0xFFE8F5E9) else ColorShopSurfaceHigh,
+                        contentColor = if (isAvailable) Color(0xFF2E7D32) else ColorShopDeepPlum
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Call,
+                        contentDescription = "Llamar",
+                        tint = if (isAvailable) Color(0xFF2E7D32) else ColorShopDeepPlum,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Llamar",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = if (isAvailable) Color(0xFF2E7D32) else ColorShopDeepPlum
+                    )
+                }
+
+                // 💬 WhatsApp directo
+                Button(
+                    onClick = {
+                        val waIntent = Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse("https://api.whatsapp.com/send?phone=$cleanPhone")
+                        )
+                        try {
+                            context.startActivity(waIntent)
+                        } catch (e: Exception) {
+                            Toast.makeText(context, "No se pudo abrir WhatsApp", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF25D366),
+                        contentColor = Color.White
+                    ),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 1.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Chat,
+                        contentDescription = "WhatsApp",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "WhatsApp",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
+                    )
                 }
             }
         }

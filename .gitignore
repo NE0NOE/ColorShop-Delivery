@@ -8,3 +8,9 @@ app/build/
 captures/
 .externalNativeBuild
 .cxx
+
+.kotlin/
+
+# APKs & Distribution
+*.apk
+/release/
