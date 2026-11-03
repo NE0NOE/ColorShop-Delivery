@@ -1,6 +1,6 @@
 # ColorShop Delivery 🦋 • Cotizador de Envíos y Despacho para Managua (Android Nativo)
 
-[![Descargar APK](https://img.shields.io/badge/Descargar-APK%20v1.5.0-A51D89?style=for-the-badge&logo=android)](https://github.com/NE0NOE/ColorShop-Delivery/releases)
+[![Descargar APK](https://img.shields.io/badge/Descargar-APK%20v1.6.0-A51D89?style=for-the-badge&logo=android)](https://github.com/NE0NOE/ColorShop-Delivery/releases)
 [![GitHub Releases](https://img.shields.io/github/v/release/NE0NOE/ColorShop-Delivery?style=for-the-badge&color=2E7D32)](https://github.com/NE0NOE/ColorShop-Delivery/releases)
 
 Aplicación móvil nativa para Android (**Kotlin + Jetpack Compose + OpenStreetMap + OSRM**) diseñada para **ColorShop Delivery** en Managua, Nicaragua. Permite recibir ubicaciones compartidas desde WhatsApp o Google Maps, calcular tarifas de envío por kilometraje real en calles, gestionar motorizados y despachar cotizaciones con un toque.
@@ -11,7 +11,7 @@ Aplicación móvil nativa para Android (**Kotlin + Jetpack Compose + OpenStreetM
 
 Descarga el APK oficial listo para instalar en cualquier dispositivo Android desde las [Releases Oficiales en GitHub](https://github.com/NE0NOE/ColorShop-Delivery/releases):
 
-- **Última versión (v1.5.0)**: [Descargar APK v1.5.0](https://github.com/NE0NOE/ColorShop-Delivery/releases/tag/v1.5.0)
+- **Última versión (v1.6.0)**: [Descargar APK v1.6.0](https://github.com/NE0NOE/ColorShop-Delivery/releases/tag/v1.6.0)
 - **Historial de versiones y releases**: [Ver todas las entregas en GitHub Releases](https://github.com/NE0NOE/ColorShop-Delivery/releases)
 
 ---

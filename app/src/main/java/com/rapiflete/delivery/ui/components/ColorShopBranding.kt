@@ -281,10 +281,10 @@ fun ColorShopSplashScreen(
         ) {
             Image(
                 painter = painterResource(id = R.drawable.colorshop_logo),
-                contentDescription = "ColorShop",
+                contentDescription = "ColorShop - Toda una experiencia",
                 modifier = Modifier
-                    .width(230.dp)
-                    .height(170.dp),
+                    .width(260.dp)
+                    .height(180.dp),
                 contentScale = ContentScale.Fit
             )
 

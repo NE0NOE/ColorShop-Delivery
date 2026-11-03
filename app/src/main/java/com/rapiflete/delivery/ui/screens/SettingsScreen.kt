@@ -74,6 +74,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rapiflete.delivery.model.CourierDriver
@@ -289,7 +290,7 @@ fun SettingsScreen(
 
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // Título de pantalla
             Column {
@@ -351,7 +352,7 @@ fun SettingsScreen(
                                 modifier = Modifier.size(22.dp)
                             )
                         }
-                        Column {
+                        Column(modifier = Modifier.weight(1f, fill = false)) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -360,7 +361,10 @@ fun SettingsScreen(
                                     text = "Gestión de Repartidores",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = ColorShopDeepPlum
+                                    color = ColorShopDeepPlum,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
                                 CategoryBadge(
                                     text = "Flota",
@@ -368,10 +372,13 @@ fun SettingsScreen(
                                     contentColor = ColorShopTertiaryBlue
                                 )
                             }
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "${couriers.size} motorizados registrados",
                                 fontSize = 11.sp,
-                                color = ColorShopMutedPlum
+                                color = ColorShopMutedPlum,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -419,16 +426,19 @@ fun SettingsScreen(
                         ) {
                             Text("📄", fontSize = 18.sp)
                         }
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
                                     text = "Formato de Recibo / Compartir",
-                                    fontSize = 15.sp,
+                                    fontSize = 14.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = ColorShopDeepPlum
+                                    color = ColorShopDeepPlum,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
                                 CategoryBadge(
                                     text = "Recibo Digital",
@@ -436,6 +446,7 @@ fun SettingsScreen(
                                     contentColor = ColorShopPrimary
                                 )
                             }
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Elige si enviar cotizaciones y comprobantes como texto o como imagen",
                                 fontSize = 11.sp,
@@ -527,16 +538,19 @@ fun SettingsScreen(
                             ) {
                                 Text("🏪", fontSize = 18.sp)
                             }
-                            Column {
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Text(
                                         text = "Tienda Matriz y Origen GPS",
-                                        fontSize = 15.sp,
+                                        fontSize = 14.5.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = ColorShopDeepPlum
+                                        color = ColorShopDeepPlum,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
                                     )
                                     CategoryBadge(
                                         text = "Tienda Matriz",
@@ -544,11 +558,13 @@ fun SettingsScreen(
                                         contentColor = ColorShopPrimary
                                     )
                                 }
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = if (isStoreDataExpanded) "Punto base para cálculo de rutas" else "$storeName • $storePlusCode",
                                     fontSize = 11.sp,
                                     color = ColorShopMutedPlum,
-                                    maxLines = 1
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -659,7 +675,9 @@ fun SettingsScreen(
                 color = Color.White,
                 shape = RoundedCornerShape(26.dp),
                 shadowElevation = 5.dp,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(26.dp))
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -671,23 +689,26 @@ fun SettingsScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(36.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(ColorShopSurfaceLow),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("⚡", fontSize = 16.sp)
+                            Text("⚡", fontSize = 18.sp)
                         }
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
                                     text = "Tarifas Base y Costo Mínimo",
-                                    fontSize = 15.sp,
+                                    fontSize = 14.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = ColorShopDeepPlum
+                                    color = ColorShopDeepPlum,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
                                 CategoryBadge(
                                     text = "Tarifas Base",
@@ -695,10 +716,13 @@ fun SettingsScreen(
                                     contentColor = Color(0xFFB45309)
                                 )
                             }
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Reglas base de cobro por distancia",
                                 fontSize = 11.sp,
-                                color = ColorShopMutedPlum
+                                color = ColorShopMutedPlum,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -869,12 +893,12 @@ fun SettingsScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(36.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(ColorShopSurfaceLow),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("⭐", fontSize = 16.sp)
+                            Text("⭐", fontSize = 18.sp)
                         }
                         Column(modifier = Modifier.weight(1f)) {
                             Row(
@@ -883,9 +907,12 @@ fun SettingsScreen(
                             ) {
                                 Text(
                                     text = "Tarifa Preferencial por Distancia",
-                                    fontSize = 15.sp,
+                                    fontSize = 14.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = ColorShopDeepPlum
+                                    color = ColorShopDeepPlum,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
                                 CategoryBadge(
                                     text = "Descuento Inteligente",
@@ -893,10 +920,13 @@ fun SettingsScreen(
                                     contentColor = Color(0xFF4338CA)
                                 )
                             }
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Aviso emergente sugerido cuando el precio del envío excede lo razonable",
                                 fontSize = 11.sp,
-                                color = ColorShopMutedPlum
+                                color = ColorShopMutedPlum,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -1025,12 +1055,14 @@ fun SettingsScreen(
                 }
             }
 
-            // SECCIÓN 3: 🕒 Horario y Recargos Automáticos + Zonas Aledañas + Redondeo
+            // SECCIÓN 3: 🕒 Horarios de Atención y Recargos Automáticos
             Surface(
                 color = Color.White,
                 shape = RoundedCornerShape(26.dp),
                 shadowElevation = 5.dp,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(26.dp))
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -1042,34 +1074,40 @@ fun SettingsScreen(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
+                                .size(36.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(ColorShopSurfaceLow),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("🕒", fontSize = 16.sp)
+                            Text("🕒", fontSize = 18.sp)
                         }
-                        Column {
+                        Column(modifier = Modifier.weight(1f)) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Text(
                                     text = "Horarios de Atención y Recargos",
-                                    fontSize = 15.sp,
+                                    fontSize = 14.5.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = ColorShopDeepPlum
+                                    color = ColorShopDeepPlum,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
                                 CategoryBadge(
-                                    text = "Horarios de Atención",
+                                    text = "Horarios",
                                     containerColor = Color(0xFFEDE9FE),
                                     contentColor = Color(0xFF6D28D9)
                                 )
                             }
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
                                 text = "Tarificación por nocturnidad y eventos",
                                 fontSize = 11.sp,
-                                color = ColorShopMutedPlum
+                                color = ColorShopMutedPlum,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -1181,38 +1219,55 @@ fun SettingsScreen(
                         valueText = rainValText,
                         onValueChanged = { rainValText = it }
                     )
+                }
+            }
 
-                    HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
-
-                    // Zonas de Recargo / Aledañas (Ciudad Sandino, Ticuantepe, etc.)
+            // SECCIÓN 4: 📍 Zonas de Recargo / Aledañas (Municipios y Distantes)
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(26.dp),
+                shadowElevation = 5.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(26.dp))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    // Cabecera compacta y armónica
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(30.dp)
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(12.dp))
                                     .background(ColorShopSurfaceLow),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Text("📍", fontSize = 14.sp)
+                                Text("📍", fontSize = 18.sp)
                             }
-                            Column {
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Text(
                                         text = "Zonas de Recargo / Aledañas",
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ColorShopDeepPlum
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = ColorShopDeepPlum,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
                                     )
                                     CategoryBadge(
                                         text = "Zonas Especiales",
@@ -1220,14 +1275,18 @@ fun SettingsScreen(
                                         contentColor = Color(0xFF0369A1)
                                     )
                                 }
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = "Tarifas planas o bases para municipios y zonas distantes",
-                                    fontSize = 10.sp,
-                                    color = ColorShopMutedPlum
+                                    fontSize = 11.sp,
+                                    color = ColorShopMutedPlum,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
 
+                        // Píldora de estado protegida por weight para no desbordarse
                         Surface(
                             color = ColorShopSurfaceHigh,
                             shape = RoundedCornerShape(50)
@@ -1237,80 +1296,108 @@ fun SettingsScreen(
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = ColorShopPrimary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                maxLines = 1,
+                                softWrap = false,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                             )
                         }
                     }
 
-                    zones.forEach { zone ->
+                    // Lista de Zonas
+                    if (zones.isEmpty()) {
                         Surface(
-                            color = Color.White,
-                            shape = RoundedCornerShape(16.dp),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(16.dp))
+                            color = ColorShopSurfaceLow.copy(alpha = 0.5f),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            Text(
+                                text = "No hay zonas especiales registradas. Añade una con el formulario abajo.",
+                                fontSize = 11.sp,
+                                color = ColorShopMutedPlum,
+                                modifier = Modifier.padding(12.dp),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            zones.forEach { zone ->
+                                Surface(
+                                    color = Color.White,
+                                    shape = RoundedCornerShape(16.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(16.dp))
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(28.dp)
-                                            .clip(CircleShape)
-                                            .background(ColorShopSurfaceLow),
-                                        contentAlignment = Alignment.Center
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(zone.iconEmoji, fontSize = 13.sp)
-                                    }
-                                    Column {
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            modifier = Modifier.weight(1f)
                                         ) {
-                                            Text(
-                                                text = zone.name,
-                                                fontSize = 13.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ColorShopDeepPlum
-                                            )
-                                            Surface(
-                                                color = ColorShopSurfaceLow,
-                                                shape = RoundedCornerShape(50)
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(28.dp)
+                                                    .clip(CircleShape)
+                                                    .background(ColorShopSurfaceLow),
+                                                contentAlignment = Alignment.Center
                                             ) {
+                                                Text(zone.iconEmoji, fontSize = 13.sp)
+                                            }
+                                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Text(
+                                                        text = zone.name,
+                                                        fontSize = 13.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = ColorShopDeepPlum,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                    Surface(
+                                                        color = ColorShopSurfaceLow,
+                                                        shape = RoundedCornerShape(50)
+                                                    ) {
+                                                        Text(
+                                                            text = "Zona Aledaña",
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = ColorShopPrimary,
+                                                            maxLines = 1,
+                                                            softWrap = false,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+                                                val extraLabel = if (zone.appliesExtraKm) "+Km estándar" else "Sin km adicional"
                                                 Text(
-                                                    text = "Zona Aledaña",
-                                                    fontSize = 9.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = ColorShopPrimary,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    text = "Precio Base: $currencySymbol ${zone.basePrice} · $extraLabel",
+                                                    fontSize = 11.sp,
+                                                    color = ColorShopMutedPlum,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                             }
                                         }
-                                        val extraLabel = if (zone.appliesExtraKm) "+Km estándar" else "Sin km adicional"
-                                        Text(
-                                            text = "Precio Base: $currencySymbol ${zone.basePrice} · $extraLabel",
-                                            fontSize = 11.sp,
-                                            color = ColorShopMutedPlum
-                                        )
-                                    }
-                                }
 
-                                IconButton(
-                                    onClick = { onDeleteSpecialZone(zone.id) },
-                                    modifier = Modifier.size(30.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.DeleteOutline,
-                                        contentDescription = "Eliminar zona",
-                                        tint = ColorShopMutedPlum,
-                                        modifier = Modifier.size(18.dp)
-                                    )
+                                        IconButton(
+                                            onClick = { onDeleteSpecialZone(zone.id) },
+                                            modifier = Modifier.size(30.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.DeleteOutline,
+                                                contentDescription = "Eliminar zona",
+                                                tint = ColorShopMutedPlum,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -1414,16 +1501,65 @@ fun SettingsScreen(
                             }
                         }
                     }
+                }
+            }
 
-                    HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
-
-                    // Reglas de Redondeo Automático del Precio Final
-                    Text(
-                        text = "REDONDEO AUTOMÁTICO DEL PRECIO FINAL",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = ColorShopMutedPlum
-                    )
+            // SECCIÓN 5: 🎯 Redondeo Automático del Precio Final
+            Surface(
+                color = Color.White,
+                shape = RoundedCornerShape(26.dp),
+                shadowElevation = 5.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(26.dp))
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(ColorShopSurfaceLow),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("🎯", fontSize = 18.sp)
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "Redondeo Automático",
+                                    fontSize = 14.5.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = ColorShopDeepPlum,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                CategoryBadge(
+                                    text = "Precio Final",
+                                    containerColor = Color(0xFFFEF3C7),
+                                    contentColor = Color(0xFFB45309)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Regla de ajuste matemático aplicada al calcular cada cotización",
+                                fontSize = 11.sp,
+                                color = ColorShopMutedPlum,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
 
                     RoundingMode.entries.forEach { mode ->
                         val isSel = roundingMode == mode
@@ -1462,12 +1598,14 @@ fun SettingsScreen(
                 }
             }
 
-            // Sección Plantillas de Mensajes (Cliente y Motorizado)
+            // SECCIÓN 6: 💬 Plantillas de Mensajes (Cliente y Motorizado)
             Surface(
                 color = Color.White,
-                shape = RoundedCornerShape(24.dp),
-                shadowElevation = 2.dp,
-                modifier = Modifier.fillMaxWidth()
+                shape = RoundedCornerShape(26.dp),
+                shadowElevation = 5.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(26.dp))
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(
@@ -1491,16 +1629,19 @@ fun SettingsScreen(
                             ) {
                                 Text("💬", fontSize = 18.sp)
                             }
-                            Column {
+                            Column(modifier = Modifier.weight(1f, fill = false)) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Text(
                                         text = "Plantillas de Mensajes",
-                                        fontSize = 15.sp,
+                                        fontSize = 14.5.sp,
                                         fontWeight = FontWeight.ExtraBold,
-                                        color = ColorShopDeepPlum
+                                        color = ColorShopDeepPlum,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
                                     )
                                     CategoryBadge(
                                         text = "WhatsApp",
@@ -1513,14 +1654,16 @@ fun SettingsScreen(
                                     text = "Personaliza los textos generados con variables dinámicas",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
-                                    color = ColorShopMutedPlum
+                                    color = ColorShopMutedPlum,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
                         IconButton(onClick = { isTemplatesExpanded = !isTemplatesExpanded }) {
                             Icon(
                                 imageVector = if (isTemplatesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                contentDescription = null,
+                                contentDescription = if (isTemplatesExpanded) "Colapsar" else "Expandir",
                                 tint = ColorShopPrimary
                             )
                         }
@@ -1903,19 +2046,24 @@ fun SettingsScreen(
 @Composable
 private fun CategoryBadge(
     text: String,
+    modifier: Modifier = Modifier,
     containerColor: Color = ColorShopSurfaceHigh,
     contentColor: Color = ColorShopPrimary
 ) {
     Surface(
         color = containerColor,
-        shape = RoundedCornerShape(50)
+        shape = RoundedCornerShape(50),
+        modifier = modifier
     ) {
         Text(
             text = text,
             fontSize = 9.sp,
             fontWeight = FontWeight.ExtraBold,
             color = contentColor,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.5.dp)
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
         )
     }
 }
