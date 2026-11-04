@@ -47,6 +47,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -77,6 +78,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             RapiFleteTheme {
                 val uiState by viewModel.uiState.collectAsState()
+                val focusManager = LocalFocusManager.current
                 var showSplash by rememberSaveable { mutableStateOf(!isExternalIntent) }
                 var currentTab by rememberSaveable { mutableIntStateOf(0) } // 0=Cotizar, 1=Historial, 2=Configuración, 3=Repartidores
 
@@ -88,14 +90,16 @@ class MainActivity : ComponentActivity() {
 
                 // Sincronización cuando cambia currentTab programáticamente (botones, atajos, historial)
                 LaunchedEffect(currentTab) {
-                    if (currentTab in 0..2 && pagerState.currentPage != currentTab) {
+                    if (currentTab in 0..2 && pagerState.currentPage != currentTab && pagerState.targetPage != currentTab) {
+                        focusManager.clearFocus()
                         pagerState.animateScrollToPage(currentTab)
                     }
                 }
 
-                // Sincronización cuando el usuario desliza con gestos el HorizontalPager
-                LaunchedEffect(pagerState.currentPage) {
-                    if (currentTab != 3 && currentTab != pagerState.currentPage) {
+                // Sincronización cuando el usuario desliza con gestos el HorizontalPager sin interferir con el touch
+                LaunchedEffect(pagerState.currentPage, pagerState.isScrollInProgress) {
+                    if (!pagerState.isScrollInProgress && currentTab != 3 && currentTab != pagerState.currentPage) {
+                        focusManager.clearFocus()
                         currentTab = pagerState.currentPage
                     }
                 }
@@ -119,9 +123,14 @@ class MainActivity : ComponentActivity() {
                             ColorShopBottomNavBar(
                                 selectedIndex = if (currentTab == 3) 2 else pagerState.currentPage,
                                 onSelectTab = { tabIndex ->
-                                    currentTab = tabIndex
-                                    coroutineScope.launch {
-                                        pagerState.animateScrollToPage(tabIndex)
+                                    if (currentTab != tabIndex) {
+                                        focusManager.clearFocus()
+                                        currentTab = tabIndex
+                                        coroutineScope.launch {
+                                            if (pagerState.currentPage != tabIndex) {
+                                                pagerState.animateScrollToPage(tabIndex)
+                                            }
+                                        }
                                     }
                                 }
                             )
@@ -145,7 +154,8 @@ class MainActivity : ComponentActivity() {
                             } else {
                                 HorizontalPager(
                                     state = pagerState,
-                                    modifier = Modifier.fillMaxSize()
+                                    modifier = Modifier.fillMaxSize(),
+                                    beyondViewportPageCount = 1
                                 ) { page ->
                                     when (page) {
                                         0 -> CalculatorScreen(

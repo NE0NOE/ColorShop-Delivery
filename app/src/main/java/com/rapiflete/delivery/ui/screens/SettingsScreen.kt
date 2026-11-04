@@ -503,7 +503,7 @@ fun SettingsScreen(
                 }
             }
 
-            // SECCIÓN: 🏪 Datos y Ubicación de Tienda Matriz (Colapsable)
+            // SECCIÓN: 🏪 Datos del Negocio / Tienda Matriz y Origen GPS (Colapsable)
             Surface(
                 color = Color.White,
                 shape = RoundedCornerShape(26.dp),
@@ -531,49 +531,58 @@ fun SettingsScreen(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(36.dp)
+                                    .size(38.dp)
                                     .clip(RoundedCornerShape(12.dp))
                                     .background(ColorShopSurfaceLow),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text("🏪", fontSize = 18.sp)
                             }
-                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Text(
-                                        text = "Tienda Matriz y Origen GPS",
-                                        fontSize = 14.5.sp,
+                                        text = "🏪 Datos del Negocio / Tienda Matriz y Origen GPS",
+                                        fontSize = 14.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = ColorShopDeepPlum,
-                                        maxLines = 1,
+                                        maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f, fill = false)
                                     )
                                     CategoryBadge(
-                                        text = "Tienda Matriz",
+                                        text = "Matriz",
                                         containerColor = ColorShopSurfaceHigh,
                                         contentColor = ColorShopPrimary
                                     )
                                 }
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = if (isStoreDataExpanded) "Punto base para cálculo de rutas" else "$storeName • $storePlusCode",
+                                    text = if (isStoreDataExpanded) {
+                                        "Punto base y datos del negocio para cálculo de rutas"
+                                    } else {
+                                        "Negocio: ${storeName.ifBlank { "ColorShop" }} • Plus Code: ${storePlusCode.ifBlank { "Configurado" }}"
+                                    },
                                     fontSize = 11.sp,
+                                    fontWeight = FontWeight.Medium,
                                     color = ColorShopMutedPlum,
-                                    maxLines = 1,
+                                    maxLines = 2,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
 
-                        IconButton(onClick = { isStoreDataExpanded = !isStoreDataExpanded }) {
+                        IconButton(
+                            onClick = { isStoreDataExpanded = !isStoreDataExpanded },
+                            modifier = Modifier.size(44.dp)
+                        ) {
                             Icon(
                                 imageVector = if (isStoreDataExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                contentDescription = if (isStoreDataExpanded) "Colapsar" else "Expandir",
-                                tint = ColorShopPrimary
+                                contentDescription = if (isStoreDataExpanded) "Colapsar datos del negocio" else "Expandir datos del negocio",
+                                tint = ColorShopPrimary,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                     }
@@ -585,7 +594,7 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = storeName,
                                 onValueChange = { storeName = it },
-                                label = { Text("Nombre de Tienda / Sucursal Matriz") },
+                                label = { Text("Nombre de Tienda / Negocio Matriz") },
                                 placeholder = { Text("Ej. Tienda Matriz ColorShop") },
                                 singleLine = true,
                                 shape = RoundedCornerShape(16.dp),
@@ -640,7 +649,7 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = storePlusCode,
                                 onValueChange = { storePlusCode = it },
-                                label = { Text("Plus Code Google Maps") },
+                                label = { Text("Plus Code Google Maps (Origen)") },
                                 placeholder = { Text("5M5V+9P Managua") },
                                 singleLine = true,
                                 shape = RoundedCornerShape(16.dp),
@@ -1270,7 +1279,7 @@ fun SettingsScreen(
                                         modifier = Modifier.weight(1f, fill = false)
                                     )
                                     CategoryBadge(
-                                        text = "Zonas Especiales",
+                                        text = "Aledañas",
                                         containerColor = Color(0xFFE0F2FE),
                                         contentColor = Color(0xFF0369A1)
                                     )
@@ -1388,13 +1397,13 @@ fun SettingsScreen(
 
                                         IconButton(
                                             onClick = { onDeleteSpecialZone(zone.id) },
-                                            modifier = Modifier.size(30.dp)
+                                            modifier = Modifier.size(36.dp)
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.DeleteOutline,
                                                 contentDescription = "Eliminar zona",
                                                 tint = ColorShopMutedPlum,
-                                                modifier = Modifier.size(18.dp)
+                                                modifier = Modifier.size(20.dp)
                                             )
                                         }
                                     }
@@ -1447,6 +1456,7 @@ fun SettingsScreen(
                                     prefix = { Text("$currencySymbol ", fontWeight = FontWeight.Bold) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     singleLine = true,
+                                    textStyle = TextStyle(fontSize = 12.5.sp),
                                     shape = RoundedCornerShape(14.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ColorShopPrimary,
@@ -1469,7 +1479,8 @@ fun SettingsScreen(
                                         text = "Aplica Km adic.",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = ColorShopDeepPlum
+                                        color = ColorShopDeepPlum,
+                                        maxLines = 1
                                     )
                                     Checkbox(
                                         checked = newZoneAppliesExtraKm,
@@ -1727,10 +1738,11 @@ fun SettingsScreen(
                                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                                     ) {
                                         Text(
-                                            text = if (showLivePreview) "👁️ Ocultar Previa" else "👁️ Vista Previa en Vivo",
+                                            text = if (showLivePreview) "👁️ Ocultar" else "👁️ Ver Previa",
                                             fontSize = 11.sp,
                                             fontWeight = FontWeight.ExtraBold,
-                                            color = if (showLivePreview) Color(0xFF15803D) else ColorShopPrimary
+                                            color = if (showLivePreview) Color(0xFF15803D) else ColorShopPrimary,
+                                            maxLines = 1
                                         )
                                     }
                                 }
@@ -2237,13 +2249,16 @@ private fun ScheduleDayBox(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.weight(1f, fill = false)
                 ) {
                     Text(
                         text = title,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (isDayActive) ColorShopDeepPlum else ColorShopMutedPlum
+                        color = if (isDayActive) ColorShopDeepPlum else ColorShopMutedPlum,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Surface(
                         color = if (isDayActive) ColorShopSurfaceHigh else Color.LightGray.copy(alpha = 0.35f),
@@ -2254,6 +2269,9 @@ private fun ScheduleDayBox(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = if (isDayActive) ColorShopPrimary else ColorShopMutedPlum,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                         )
                     }
@@ -2283,6 +2301,7 @@ private fun ScheduleDayBox(
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Apertura") },
+                            textStyle = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold),
                             trailingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.AccessTime,
@@ -2326,6 +2345,7 @@ private fun ScheduleDayBox(
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Cierre") },
+                            textStyle = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold),
                             trailingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.AccessTime,
@@ -2468,7 +2488,7 @@ private fun StitchSurchargeSegmentedRow(
             color = Color(0xFFE2E8F0),
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
-                .weight(1.3f)
+                .weight(1.35f)
                 .height(42.dp)
         ) {
             Row(
@@ -2489,10 +2509,12 @@ private fun StitchSurchargeSegmentedRow(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             Text(
-                                text = t.displayName,
+                                text = if (t == SurchargeType.PERCENTAGE) "% Porc." else "Fijo",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (sel) ColorShopPrimary else ColorShopMutedPlum
+                                color = if (sel) ColorShopPrimary else ColorShopMutedPlum,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -2513,6 +2535,7 @@ private fun StitchSurchargeSegmentedRow(
             },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
             singleLine = true,
+            textStyle = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold),
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = ColorShopPrimary,
@@ -2520,7 +2543,7 @@ private fun StitchSurchargeSegmentedRow(
                 focusedContainerColor = Color.White,
                 unfocusedContainerColor = Color.White
             ),
-            modifier = Modifier.weight(0.8f)
+            modifier = Modifier.weight(0.9f)
         )
     }
 }

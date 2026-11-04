@@ -25,9 +25,11 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -40,6 +42,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DirectionsBike
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.automirrored.filled.SendToMobile
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
@@ -52,7 +55,6 @@ import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.NearMe
-import androidx.compose.material.icons.filled.Notes
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Refresh
@@ -172,8 +174,7 @@ fun CalculatorScreen(
     var showAjustesBottomSheet by remember { mutableStateOf(false) }
     var showEditPriceDialog by remember { mutableStateOf(false) }
     var showDuplicateConfirmDialog by remember { mutableStateOf(false) }
-    var showCustomerDeliveryExpanded by remember { mutableStateOf(true) }
-    var showPaymentCourierExpanded by remember { mutableStateOf(false) }
+    var showPaymentCourierExpanded by remember { mutableStateOf(true) }
     var zoomTrigger by remember { mutableIntStateOf(0) }
     var resetNorthTrigger by remember { mutableIntStateOf(0) }
 
@@ -250,6 +251,7 @@ fun CalculatorScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .imePadding()
                 .verticalScroll(scrollState)
         ) {
         // 1. Barra Superior Oficial de ColorShop Delivery
@@ -462,7 +464,7 @@ fun CalculatorScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(420.dp)
+                .height(285.dp)
                 .shadow(
                     elevation = 10.dp,
                     shape = RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp),
@@ -522,8 +524,8 @@ fun CalculatorScreen(
             Column(
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
-                    .padding(end = 16.dp)
-                    .height(290.dp),
+                    .padding(end = 14.dp, top = 8.dp, bottom = 8.dp)
+                    .fillMaxHeight(),
                 verticalArrangement = Arrangement.SpaceBetween,
                 horizontalAlignment = Alignment.End
             ) {
@@ -1068,375 +1070,452 @@ fun CalculatorScreen(
                     }
                 }
 
-                // Acordeón 1: 👤 Datos del Cliente y Entrega (Progressive Disclosure)
+                // 👤 Tarjeta Principal: Datos del Cliente y Pedido (Siempre Visible)
                 Surface(
-                    color = ColorShopSurfaceLow.copy(alpha = 0.5f),
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, ColorShopSurfaceHigh.copy(alpha = 0.7f), RoundedCornerShape(18.dp))
+                    color = Color.White,
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.5.dp, ColorShopPrimary.copy(alpha = 0.25f)),
+                    shadowElevation = 3.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        // Título y distintivo visual (Siempre Abierto)
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    showCustomerDeliveryExpanded = !showCustomerDeliveryExpanded
-                                },
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.weight(1f)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text(
-                                    text = "👤 Datos del Cliente y Entrega",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ColorShopDeepPlum
-                                )
-                                if (!showCustomerDeliveryExpanded && uiState.customerNote.isNotBlank()) {
-                                    Surface(
-                                        color = ColorShopPinkPill,
-                                        shape = RoundedCornerShape(50)
-                                    ) {
-                                        Text(
-                                            text = uiState.customerNote,
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = ColorShopPrimary,
-                                            maxLines = 1,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(ColorShopPrimary.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = ColorShopPrimary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "👤 Datos del Cliente y Pedido",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = ColorShopDeepPlum
+                                    )
+                                    Text(
+                                        text = "Información para el comprobante y despacho",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = ColorShopMutedPlum
+                                    )
                                 }
                             }
-                            Surface(
-                                color = if (showCustomerDeliveryExpanded) ColorShopPinkPill else Color.White,
-                                shape = RoundedCornerShape(50),
-                                border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.25f))
-                            ) {
-                                Text(
-                                    text = if (showCustomerDeliveryExpanded) "Ocultar ▲" else "Completar ▼",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ColorShopPrimary,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-                                )
+
+                            if (uiState.customerNote.isNotBlank()) {
+                                Surface(
+                                    color = ColorShopPinkPill,
+                                    shape = RoundedCornerShape(50)
+                                ) {
+                                    Text(
+                                        text = "✓ Listo",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopPrimary,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
                             }
                         }
 
-                        AnimatedVisibility(visible = showCustomerDeliveryExpanded) {
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.padding(top = 4.dp)
-                            ) {
-                                // Nombre del cliente o persona a recibir
-                                OutlinedTextField(
-                                    value = uiState.customerNote,
-                                    onValueChange = onCustomerNoteChanged,
-                                    label = { Text("Cliente / Persona que recibe", fontSize = 11.sp) },
-                                    placeholder = { Text("Ej. María Fernanda Pérez", fontSize = 12.sp) },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Person, contentDescription = null, tint = ColorShopPrimary, modifier = Modifier.size(17.dp))
-                                    },
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = ColorShopPrimary,
-                                        unfocusedBorderColor = ColorShopSurfaceHigh,
-                                        focusedContainerColor = Color.White,
-                                        unfocusedContainerColor = Color.White
-                                    ),
-                                    modifier = Modifier.fillMaxWidth()
+                        HorizontalDivider(
+                            color = ColorShopSurfaceHigh.copy(alpha = 0.6f),
+                            thickness = 1.dp
+                        )
+
+                        // Nombre del cliente o persona a recibir
+                        OutlinedTextField(
+                            value = uiState.customerNote,
+                            onValueChange = onCustomerNoteChanged,
+                            label = { Text("Cliente / Persona que recibe", fontSize = 11.sp) },
+                            placeholder = { Text("Ej. María Fernanda Pérez", fontSize = 12.sp) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = null,
+                                    tint = ColorShopPrimary,
+                                    modifier = Modifier.size(17.dp)
                                 )
-
-                                // Fila: Número del cliente + Hora aproximada de entrega
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    OutlinedTextField(
-                                        value = uiState.customerPhone,
-                                        onValueChange = onCustomerPhoneChanged,
-                                        label = { Text("Teléfono cliente", fontSize = 11.sp) },
-                                        placeholder = { Text("8899-1122", fontSize = 12.sp) },
-                                        leadingIcon = {
-                                            Icon(Icons.Default.Phone, contentDescription = null, tint = ColorShopPrimary, modifier = Modifier.size(16.dp))
-                                        },
-                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                                        singleLine = true,
-                                        shape = RoundedCornerShape(14.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = ColorShopPrimary,
-                                            unfocusedBorderColor = ColorShopSurfaceHigh,
-                                            focusedContainerColor = Color.White,
-                                            unfocusedContainerColor = Color.White
-                                        ),
-                                        modifier = Modifier.weight(1f)
-                                    )
-
-                                    OutlinedTextField(
-                                        value = uiState.approximateDeliveryTime,
-                                        onValueChange = onApproximateDeliveryTimeChanged,
-                                        label = { Text("Hora aprox.", fontSize = 11.sp) },
-                                        placeholder = { Text("Ej. 3:30 PM", fontSize = 12.sp) },
-                                        leadingIcon = {
-                                            IconButton(
-                                                onClick = {
-                                                    val cal = Calendar.getInstance()
-                                                    TimePickerDialog(
-                                                        context,
-                                                        { _, hourOfDay, minute ->
-                                                            val pickedCal = Calendar.getInstance().apply {
-                                                                set(Calendar.HOUR_OF_DAY, hourOfDay)
-                                                                set(Calendar.MINUTE, minute)
-                                                            }
-                                                            val sdf = SimpleDateFormat("hh:mm a", Locale.US)
-                                                            onApproximateDeliveryTimeChanged(sdf.format(pickedCal.time))
-                                                        },
-                                                        cal.get(Calendar.HOUR_OF_DAY),
-                                                        cal.get(Calendar.MINUTE),
-                                                        false
-                                                    ).show()
-                                                },
-                                                modifier = Modifier.size(24.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.AccessTime,
-                                                    contentDescription = "Abrir reloj",
-                                                    tint = ColorShopPrimary,
-                                                    modifier = Modifier.size(16.dp)
-                                                )
-                                            }
-                                        },
-                                        singleLine = true,
-                                        shape = RoundedCornerShape(14.dp),
-                                        colors = OutlinedTextFieldDefaults.colors(
-                                            focusedBorderColor = ColorShopPrimary,
-                                            unfocusedBorderColor = ColorShopSurfaceHigh,
-                                            focusedContainerColor = Color.White,
-                                            unfocusedContainerColor = Color.White
-                                        ),
-                                        modifier = Modifier.weight(1f)
-                                    )
-                                }
-
-                                // Chips de Selección Rápida de Hora Estimada
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = "Hora rápida:",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ColorShopMutedPlum
-                                    )
-                                    val quickIntervals = listOf(
-                                        "En 30 min" to 30,
-                                        "En 45 min" to 45,
-                                        "En 1 hr" to 60
-                                    )
-                                    quickIntervals.forEach { (label, mins) ->
-                                        val cal = Calendar.getInstance()
-                                        cal.add(Calendar.MINUTE, mins)
-                                        val targetTime = SimpleDateFormat("hh:mm a", Locale.US).format(cal.time)
-                                        val isSelected = uiState.approximateDeliveryTime.startsWith(label)
-
-                                        Surface(
-                                            color = if (isSelected) ColorShopPrimary else ColorShopSurfaceLow,
-                                            shape = RoundedCornerShape(50),
-                                            border = BorderStroke(
-                                                1.dp,
-                                                if (isSelected) ColorShopPrimary else ColorShopSurfaceHigh
-                                            ),
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(50))
-                                                .clickable {
-                                                    onApproximateDeliveryTimeChanged("$label (~$targetTime)")
-                                                }
-                                        ) {
-                                            Text(
-                                                text = label,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isSelected) Color.White else ColorShopDeepPlum,
-                                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-                                            )
-                                        }
-                                    }
-
-                                    // Chip para abrir TimePickerDialog nativo
-                                    Surface(
-                                        color = ColorShopPinkPill,
-                                        shape = RoundedCornerShape(50),
-                                        border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.35f)),
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(50))
-                                            .clickable {
-                                                val cal = Calendar.getInstance()
-                                                TimePickerDialog(
-                                                    context,
-                                                    { _, hourOfDay, minute ->
-                                                        val pickedCal = Calendar.getInstance().apply {
-                                                            set(Calendar.HOUR_OF_DAY, hourOfDay)
-                                                            set(Calendar.MINUTE, minute)
-                                                        }
-                                                        val sdf = SimpleDateFormat("hh:mm a", Locale.US)
-                                                        onApproximateDeliveryTimeChanged(sdf.format(pickedCal.time))
-                                                    },
-                                                    cal.get(Calendar.HOUR_OF_DAY),
-                                                    cal.get(Calendar.MINUTE),
-                                                    false
-                                                ).show()
-                                            }
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.AccessTime,
-                                                contentDescription = null,
-                                                tint = ColorShopPrimary,
-                                                modifier = Modifier.size(13.dp)
-                                            )
-                                            Text(
-                                                text = "Reloj 🕒",
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ColorShopPrimary
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // Total de Productos / Mercadería por separado
-                                OutlinedTextField(
-                                    value = uiState.productAmountInput,
-                                    onValueChange = onProductAmountChanged,
-                                    label = { Text("Total Productos / Mercadería ($cur)", fontSize = 11.sp) },
-                                    placeholder = { Text("Ej. 450", fontSize = 12.sp) },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Inventory2, contentDescription = null, tint = ColorShopPrimary, modifier = Modifier.size(17.dp))
-                                    },
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                                    singleLine = true,
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = ColorShopPrimary,
-                                        unfocusedBorderColor = ColorShopSurfaceHigh,
-                                        focusedContainerColor = Color.White,
-                                        unfocusedContainerColor = Color.White
-                                    ),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                // Comentarios del pedido
-                                OutlinedTextField(
-                                    value = uiState.orderComments,
-                                    onValueChange = onOrderCommentsChanged,
-                                    label = { Text("Comentarios del pedido / referencias", fontSize = 11.sp) },
-                                    placeholder = { Text("Ej. Portón negro, llamar al llegar, frágil...", fontSize = 12.sp) },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.Notes, contentDescription = null, tint = ColorShopPrimary, modifier = Modifier.size(17.dp))
-                                    },
-                                    maxLines = 2,
-                                    shape = RoundedCornerShape(14.dp),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedBorderColor = ColorShopPrimary,
-                                        unfocusedBorderColor = ColorShopSurfaceHigh,
-                                        focusedContainerColor = Color.White,
-                                        unfocusedContainerColor = Color.White
-                                    ),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                // Botón para añadir foto de recibo / respaldo
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Button(
-                                        onClick = { photoPickerLauncher.launch("image/*") },
-                                        shape = RoundedCornerShape(14.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = Color.White,
-                                            contentColor = ColorShopPrimary
-                                        ),
-                                        modifier = Modifier
-                                            .weight(1f)
-                                            .border(1.dp, ColorShopPrimary.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                            },
+                            trailingIcon = {
+                                if (uiState.customerNote.isNotBlank()) {
+                                    IconButton(
+                                        onClick = { onCustomerNoteChanged("") },
+                                        modifier = Modifier.size(24.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.AddAPhoto,
-                                            contentDescription = null,
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Limpiar cliente",
+                                            tint = ColorShopMutedPlum,
                                             modifier = Modifier.size(16.dp)
                                         )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = if (uiState.receiptPhotoUri.isBlank()) "Añadir Foto / Recibo" else "Cambiar Foto Adjunta",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ColorShopPrimary,
+                                unfocusedBorderColor = ColorShopSurfaceHigh,
+                                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Fila: Número del cliente + Hora aproximada de entrega
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = uiState.customerPhone,
+                                onValueChange = onCustomerPhoneChanged,
+                                label = { Text("Teléfono cliente", fontSize = 11.sp) },
+                                placeholder = { Text("8899-1122", fontSize = 12.sp) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Phone,
+                                        contentDescription = null,
+                                        tint = ColorShopPrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                },
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Phone,
+                                    imeAction = ImeAction.Next
+                                ),
+                                singleLine = true,
+                                shape = RoundedCornerShape(14.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ColorShopPrimary,
+                                    unfocusedBorderColor = ColorShopSurfaceHigh,
+                                    focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                                    unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                                ),
+                                modifier = Modifier.weight(1f)
+                            )
+
+                            OutlinedTextField(
+                                value = uiState.approximateDeliveryTime,
+                                onValueChange = onApproximateDeliveryTimeChanged,
+                                label = { Text("Hora aprox.", fontSize = 11.sp) },
+                                placeholder = { Text("Ej. 3:30 PM", fontSize = 12.sp) },
+                                leadingIcon = {
+                                    IconButton(
+                                        onClick = {
+                                            val cal = Calendar.getInstance()
+                                            TimePickerDialog(
+                                                context,
+                                                { _, hourOfDay, minute ->
+                                                    val pickedCal = Calendar.getInstance().apply {
+                                                        set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                                        set(Calendar.MINUTE, minute)
+                                                    }
+                                                    val sdf = SimpleDateFormat("hh:mm a", Locale.US)
+                                                    onApproximateDeliveryTimeChanged(sdf.format(pickedCal.time))
+                                                },
+                                                cal.get(Calendar.HOUR_OF_DAY),
+                                                cal.get(Calendar.MINUTE),
+                                                false
+                                            ).show()
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AccessTime,
+                                            contentDescription = "Abrir reloj",
+                                            tint = ColorShopPrimary,
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     }
+                                },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = ColorShopPrimary,
+                                    unfocusedBorderColor = ColorShopSurfaceHigh,
+                                    focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                                    unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                                ),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
 
-                                    if (uiState.receiptPhotoUri.isNotBlank()) {
-                                        val bmp = remember(uiState.receiptPhotoUri) {
-                                            runCatching { BitmapFactory.decodeFile(uiState.receiptPhotoUri) }.getOrNull()
+                        // Chips de Selección Rápida de Hora Estimada
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Hora rápida:",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopMutedPlum
+                            )
+                            val quickIntervals = listOf(
+                                "En 30 min" to 30,
+                                "En 45 min" to 45,
+                                "En 1 hr" to 60
+                            )
+                            quickIntervals.forEach { (label, mins) ->
+                                val cal = Calendar.getInstance()
+                                cal.add(Calendar.MINUTE, mins)
+                                val targetTime = SimpleDateFormat("hh:mm a", Locale.US).format(cal.time)
+                                val isSelected = uiState.approximateDeliveryTime.startsWith(label)
+
+                                Surface(
+                                    color = if (isSelected) ColorShopPrimary else ColorShopSurfaceLow,
+                                    shape = RoundedCornerShape(50),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSelected) ColorShopPrimary else ColorShopSurfaceHigh
+                                    ),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onApproximateDeliveryTimeChanged("$label (~$targetTime)")
                                         }
-                                        if (bmp != null) {
-                                            Image(
-                                                bitmap = bmp.asImageBitmap(),
-                                                contentDescription = "Foto recibo",
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .size(42.dp)
-                                                    .clip(RoundedCornerShape(10.dp))
-                                                    .border(1.dp, ColorShopPrimary, RoundedCornerShape(10.dp))
-                                            )
-                                        }
-                                        IconButton(
-                                            onClick = { onReceiptPhotoSelected("") },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.DeleteOutline,
-                                                contentDescription = "Quitar foto",
-                                                tint = ColorShopPrimary
-                                            )
-                                        }
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.White else ColorShopDeepPlum,
+                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+
+                            // Chip para abrir TimePickerDialog nativo
+                            Surface(
+                                color = ColorShopPinkPill,
+                                shape = RoundedCornerShape(50),
+                                border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.35f)),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        val cal = Calendar.getInstance()
+                                        TimePickerDialog(
+                                            context,
+                                            { _, hourOfDay, minute ->
+                                                val pickedCal = Calendar.getInstance().apply {
+                                                    set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                                    set(Calendar.MINUTE, minute)
+                                                }
+                                                val sdf = SimpleDateFormat("hh:mm a", Locale.US)
+                                                onApproximateDeliveryTimeChanged(sdf.format(pickedCal.time))
+                                            },
+                                            cal.get(Calendar.HOUR_OF_DAY),
+                                            cal.get(Calendar.MINUTE),
+                                            false
+                                        ).show()
                                     }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.AccessTime,
+                                        contentDescription = null,
+                                        tint = ColorShopPrimary,
+                                        modifier = Modifier.size(13.dp)
+                                    )
+                                    Text(
+                                        text = "Reloj 🕒",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopPrimary
+                                    )
+                                }
+                            }
+                        }
+
+                        // Total de Productos / Mercadería por separado
+                        OutlinedTextField(
+                            value = uiState.productAmountInput,
+                            onValueChange = onProductAmountChanged,
+                            label = { Text("Total Productos / Mercadería ($cur)", fontSize = 11.sp) },
+                            placeholder = { Text("Ej. 450", fontSize = 12.sp) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Inventory2,
+                                    contentDescription = null,
+                                    tint = ColorShopPrimary,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            },
+                            trailingIcon = {
+                                if (uiState.productAmountInput.isNotBlank()) {
+                                    IconButton(
+                                        onClick = { onProductAmountChanged("") },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Limpiar monto productos",
+                                            tint = ColorShopMutedPlum,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Decimal,
+                                imeAction = ImeAction.Next
+                            ),
+                            singleLine = true,
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ColorShopPrimary,
+                                unfocusedBorderColor = ColorShopSurfaceHigh,
+                                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Comentarios del pedido
+                        OutlinedTextField(
+                            value = uiState.orderComments,
+                            onValueChange = onOrderCommentsChanged,
+                            label = { Text("Comentarios del pedido / referencias", fontSize = 11.sp) },
+                            placeholder = { Text("Ej. Portón negro, llamar al llegar, frágil...", fontSize = 12.sp) },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Notes,
+                                    contentDescription = null,
+                                    tint = ColorShopPrimary,
+                                    modifier = Modifier.size(17.dp)
+                                )
+                            },
+                            trailingIcon = {
+                                if (uiState.orderComments.isNotBlank()) {
+                                    IconButton(
+                                        onClick = { onOrderCommentsChanged("") },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Limpiar comentarios",
+                                            tint = ColorShopMutedPlum,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            maxLines = 2,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ColorShopPrimary,
+                                unfocusedBorderColor = ColorShopSurfaceHigh,
+                                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        // Botón para añadir foto de recibo / respaldo
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = { photoPickerLauncher.launch("image/*") },
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = ColorShopSurfaceLow,
+                                    contentColor = ColorShopPrimary
+                                ),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .border(1.dp, ColorShopPrimary.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AddAPhoto,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = if (uiState.receiptPhotoUri.isBlank()) "Añadir Foto / Recibo" else "Cambiar Foto Adjunta",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            if (uiState.receiptPhotoUri.isNotBlank()) {
+                                val bmp = remember(uiState.receiptPhotoUri) {
+                                    runCatching { BitmapFactory.decodeFile(uiState.receiptPhotoUri) }.getOrNull()
+                                }
+                                if (bmp != null) {
+                                    Image(
+                                        bitmap = bmp.asImageBitmap(),
+                                        contentDescription = "Foto recibo",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(42.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .border(1.dp, ColorShopPrimary, RoundedCornerShape(10.dp))
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { onReceiptPhotoSelected("") },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteOutline,
+                                        contentDescription = "Quitar foto",
+                                        tint = ColorShopPrimary
+                                    )
                                 }
                             }
                         }
                     }
                 }
 
-                // Acordeón 2: 💳 Cobro y Repartidor (Progressive Disclosure)
+                // 💳 Tarjeta: Cobro y Repartidor (Accesible)
                 Surface(
-                    color = ColorShopSurfaceLow.copy(alpha = 0.5f),
-                    shape = RoundedCornerShape(18.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, ColorShopSurfaceHigh.copy(alpha = 0.7f), RoundedCornerShape(18.dp))
+                    color = Color.White,
+                    shape = RoundedCornerShape(20.dp),
+                    border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.15f)),
+                    shadowElevation = 2.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Row(
                             modifier = Modifier
@@ -1454,31 +1533,33 @@ fun CalculatorScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text(
-                                    text = "💳 Cobro y Repartidor",
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ColorShopDeepPlum
-                                )
-                                if (!showPaymentCourierExpanded) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(32.dp)
+                                        .clip(CircleShape)
+                                        .background(ColorShopPrimary.copy(alpha = 0.12f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text("💳", fontSize = 16.sp)
+                                }
+                                Column {
+                                    Text(
+                                        text = "Cobro y Repartidor",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = ColorShopDeepPlum
+                                    )
                                     val courierLabel = uiState.selectedCourier?.name ?: "Sin asignar"
-                                    Surface(
-                                        color = ColorShopPinkPill,
-                                        shape = RoundedCornerShape(50)
-                                    ) {
-                                        Text(
-                                            text = "${uiState.selectedPaymentMethod.badgeLabel} • $courierLabel",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = ColorShopPrimary,
-                                            maxLines = 1,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
-                                    }
+                                    Text(
+                                        text = "${uiState.selectedPaymentMethod.badgeLabel} • $courierLabel",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = ColorShopPrimary
+                                    )
                                 }
                             }
                             Surface(
-                                color = if (showPaymentCourierExpanded) ColorShopPinkPill else Color.White,
+                                color = if (showPaymentCourierExpanded) ColorShopPinkPill else ColorShopSurfaceLow,
                                 shape = RoundedCornerShape(50),
                                 border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.25f))
                             ) {
@@ -1787,7 +1868,7 @@ fun CalculatorScreen(
         }
 
         // Espaciador para evitar que el contenido final quede oculto tras el Dock Inferior
-        Spacer(modifier = Modifier.height(130.dp))
+        Spacer(modifier = Modifier.height(160.dp))
     }
 
     // 4. Sticky Bottom Action Dock (Ergonomía a una mano / Thumb Zone)
