@@ -9,7 +9,9 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -172,6 +174,8 @@ fun CalculatorScreen(
     val scrollState = rememberScrollState()
 
     var showAjustesBottomSheet by remember { mutableStateOf(false) }
+    var showCustomerBottomSheet by remember { mutableStateOf(false) }
+    var showCustomerDeliveryExpanded by remember { mutableStateOf(true) }
     var showEditPriceDialog by remember { mutableStateOf(false) }
     var showDuplicateConfirmDialog by remember { mutableStateOf(false) }
     var showPaymentCourierExpanded by remember { mutableStateOf(true) }
@@ -584,33 +588,73 @@ fun CalculatorScreen(
                     }
                 }
 
-                // Botón flotante "Ajustes" (Opciones y recargos de tarifa)
-                Surface(
-                    color = ColorShopPrimary,
-                    shape = RoundedCornerShape(50),
-                    shadowElevation = 6.dp,
-                    modifier = Modifier
-                        .height(44.dp)
-                        .clickable { showAjustesBottomSheet = true }
+                // Botones flotantes: Datos del Cliente y Ajustes Rápidos
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalAlignment = Alignment.End
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
+                    // Botón flotante "👤 Cliente" para acceso directo inmediato
+                    Surface(
+                        color = if (uiState.customerNote.isNotBlank()) Color(0xFF15803D) else ColorShopPrimary,
+                        shape = RoundedCornerShape(50),
+                        shadowElevation = 6.dp,
+                        modifier = Modifier
+                            .height(44.dp)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                showCustomerBottomSheet = true
+                            }
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Tune,
-                            contentDescription = "Ajustes y recargos",
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Ajustes",
-                            color = Color.White,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = "Datos del Cliente",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = if (uiState.customerNote.isNotBlank()) uiState.customerNote.take(12) else "Cliente",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    // Botón flotante "Ajustes" (Opciones y recargos de tarifa)
+                    Surface(
+                        color = ColorShopPrimary,
+                        shape = RoundedCornerShape(50),
+                        shadowElevation = 6.dp,
+                        modifier = Modifier
+                            .height(44.dp)
+                            .clickable { showAjustesBottomSheet = true }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = "Ajustes y recargos",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Text(
+                                text = "Ajustes",
+                                color = Color.White,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -681,6 +725,39 @@ fun CalculatorScreen(
                         }
                     } else {
                         Spacer(modifier = Modifier.width(1.dp))
+                    }
+
+                    // Acceso directo al Menú de Datos del Cliente
+                    Surface(
+                        color = if (uiState.customerNote.isNotBlank()) ColorShopPinkPill else ColorShopSurfaceLow,
+                        shape = RoundedCornerShape(50),
+                        border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.35f)),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                showCustomerBottomSheet = true
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Person,
+                                contentDescription = null,
+                                tint = ColorShopPrimary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Text(
+                                text = if (uiState.customerNote.isNotBlank()) "👤 " + uiState.customerNote.take(14) else "👤 Datos Cliente",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopPrimary,
+                                maxLines = 1
+                            )
+                        }
                     }
 
                     // Botón 'Limpiar / Nueva Cotización'
@@ -1070,7 +1147,7 @@ fun CalculatorScreen(
                     }
                 }
 
-                // 👤 Tarjeta Principal: Datos del Cliente y Pedido (Siempre Visible)
+                // 👤 Tarjeta Principal: Datos del Cliente y Pedido (Acordeón y Menú Rápido)
                 Surface(
                     color = Color.White,
                     shape = RoundedCornerShape(20.dp),
@@ -1082,15 +1159,22 @@ fun CalculatorScreen(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // Título y distintivo visual (Siempre Abierto)
+                        // Título y distintivo visual (Acordeón desplegable / plegable)
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    showCustomerDeliveryExpanded = !showCustomerDeliveryExpanded
+                                },
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f, fill = false)
                             ) {
                                 Box(
                                     modifier = Modifier
@@ -1114,22 +1198,42 @@ fun CalculatorScreen(
                                         color = ColorShopDeepPlum
                                     )
                                     Text(
-                                        text = "Información para el comprobante y despacho",
+                                        text = if (uiState.customerNote.isNotBlank()) "Cliente: " + uiState.customerNote else "Información para el comprobante y despacho",
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Medium,
-                                        color = ColorShopMutedPlum
+                                        color = ColorShopMutedPlum,
+                                        maxLines = 1
                                     )
                                 }
                             }
 
-                            if (uiState.customerNote.isNotBlank()) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                if (uiState.customerNote.isNotBlank()) {
+                                    Surface(
+                                        color = ColorShopPinkPill,
+                                        shape = RoundedCornerShape(50)
+                                    ) {
+                                        Text(
+                                            text = "✓ Listo",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorShopPrimary,
+                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+
                                 Surface(
-                                    color = ColorShopPinkPill,
-                                    shape = RoundedCornerShape(50)
+                                    color = if (showCustomerDeliveryExpanded) ColorShopPinkPill else ColorShopSurfaceLow,
+                                    shape = RoundedCornerShape(50),
+                                    border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.25f))
                                 ) {
                                     Text(
-                                        text = "✓ Listo",
-                                        fontSize = 10.sp,
+                                        text = if (showCustomerDeliveryExpanded) "Ocultar ▲" else "Completar ▼",
+                                        fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = ColorShopPrimary,
                                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
@@ -1138,369 +1242,25 @@ fun CalculatorScreen(
                             }
                         }
 
-                        HorizontalDivider(
-                            color = ColorShopSurfaceHigh.copy(alpha = 0.6f),
-                            thickness = 1.dp
-                        )
-
-                        // Nombre del cliente o persona a recibir
-                        OutlinedTextField(
-                            value = uiState.customerNote,
-                            onValueChange = onCustomerNoteChanged,
-                            label = { Text("Cliente / Persona que recibe", fontSize = 11.sp) },
-                            placeholder = { Text("Ej. María Fernanda Pérez", fontSize = 12.sp) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Person,
-                                    contentDescription = null,
-                                    tint = ColorShopPrimary,
-                                    modifier = Modifier.size(17.dp)
-                                )
-                            },
-                            trailingIcon = {
-                                if (uiState.customerNote.isNotBlank()) {
-                                    IconButton(
-                                        onClick = { onCustomerNoteChanged("") },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "Limpiar cliente",
-                                            tint = ColorShopMutedPlum,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                            },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ColorShopPrimary,
-                                unfocusedBorderColor = ColorShopSurfaceHigh,
-                                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
-                                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        // Fila: Número del cliente + Hora aproximada de entrega
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedTextField(
-                                value = uiState.customerPhone,
-                                onValueChange = onCustomerPhoneChanged,
-                                label = { Text("Teléfono cliente", fontSize = 11.sp) },
-                                placeholder = { Text("8899-1122", fontSize = 12.sp) },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.Default.Phone,
-                                        contentDescription = null,
-                                        tint = ColorShopPrimary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                },
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Phone,
-                                    imeAction = ImeAction.Next
-                                ),
-                                singleLine = true,
-                                shape = RoundedCornerShape(14.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = ColorShopPrimary,
-                                    unfocusedBorderColor = ColorShopSurfaceHigh,
-                                    focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
-                                    unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
-                                ),
-                                modifier = Modifier.weight(1f)
+                        if (showCustomerDeliveryExpanded) {
+                            HorizontalDivider(
+                                color = ColorShopSurfaceHigh.copy(alpha = 0.6f),
+                                thickness = 1.dp
                             )
 
-                            OutlinedTextField(
-                                value = uiState.approximateDeliveryTime,
-                                onValueChange = onApproximateDeliveryTimeChanged,
-                                label = { Text("Hora aprox.", fontSize = 11.sp) },
-                                placeholder = { Text("Ej. 3:30 PM", fontSize = 12.sp) },
-                                leadingIcon = {
-                                    IconButton(
-                                        onClick = {
-                                            val cal = Calendar.getInstance()
-                                            TimePickerDialog(
-                                                context,
-                                                { _, hourOfDay, minute ->
-                                                    val pickedCal = Calendar.getInstance().apply {
-                                                        set(Calendar.HOUR_OF_DAY, hourOfDay)
-                                                        set(Calendar.MINUTE, minute)
-                                                    }
-                                                    val sdf = SimpleDateFormat("hh:mm a", Locale.US)
-                                                    onApproximateDeliveryTimeChanged(sdf.format(pickedCal.time))
-                                                },
-                                                cal.get(Calendar.HOUR_OF_DAY),
-                                                cal.get(Calendar.MINUTE),
-                                                false
-                                            ).show()
-                                        },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.AccessTime,
-                                            contentDescription = "Abrir reloj",
-                                            tint = ColorShopPrimary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                },
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = ColorShopPrimary,
-                                    unfocusedBorderColor = ColorShopSurfaceHigh,
-                                    focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
-                                    unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
-                                ),
-                                modifier = Modifier.weight(1f)
+                            CustomerFieldsForm(
+                                uiState = uiState,
+                                cur = cur,
+                                context = context,
+                                haptic = haptic,
+                                photoPickerLauncher = photoPickerLauncher,
+                                onCustomerNoteChanged = onCustomerNoteChanged,
+                                onCustomerPhoneChanged = onCustomerPhoneChanged,
+                                onApproximateDeliveryTimeChanged = onApproximateDeliveryTimeChanged,
+                                onProductAmountChanged = onProductAmountChanged,
+                                onOrderCommentsChanged = onOrderCommentsChanged,
+                                onReceiptPhotoSelected = onReceiptPhotoSelected
                             )
-                        }
-
-                        // Chips de Selección Rápida de Hora Estimada
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "Hora rápida:",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = ColorShopMutedPlum
-                            )
-                            val quickIntervals = listOf(
-                                "En 30 min" to 30,
-                                "En 45 min" to 45,
-                                "En 1 hr" to 60
-                            )
-                            quickIntervals.forEach { (label, mins) ->
-                                val cal = Calendar.getInstance()
-                                cal.add(Calendar.MINUTE, mins)
-                                val targetTime = SimpleDateFormat("hh:mm a", Locale.US).format(cal.time)
-                                val isSelected = uiState.approximateDeliveryTime.startsWith(label)
-
-                                Surface(
-                                    color = if (isSelected) ColorShopPrimary else ColorShopSurfaceLow,
-                                    shape = RoundedCornerShape(50),
-                                    border = BorderStroke(
-                                        1.dp,
-                                        if (isSelected) ColorShopPrimary else ColorShopSurfaceHigh
-                                    ),
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(50))
-                                        .clickable {
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            onApproximateDeliveryTimeChanged("$label (~$targetTime)")
-                                        }
-                                ) {
-                                    Text(
-                                        text = label,
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isSelected) Color.White else ColorShopDeepPlum,
-                                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-
-                            // Chip para abrir TimePickerDialog nativo
-                            Surface(
-                                color = ColorShopPinkPill,
-                                shape = RoundedCornerShape(50),
-                                border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.35f)),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(50))
-                                    .clickable {
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        val cal = Calendar.getInstance()
-                                        TimePickerDialog(
-                                            context,
-                                            { _, hourOfDay, minute ->
-                                                val pickedCal = Calendar.getInstance().apply {
-                                                    set(Calendar.HOUR_OF_DAY, hourOfDay)
-                                                    set(Calendar.MINUTE, minute)
-                                                }
-                                                val sdf = SimpleDateFormat("hh:mm a", Locale.US)
-                                                onApproximateDeliveryTimeChanged(sdf.format(pickedCal.time))
-                                            },
-                                            cal.get(Calendar.HOUR_OF_DAY),
-                                            cal.get(Calendar.MINUTE),
-                                            false
-                                        ).show()
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.AccessTime,
-                                        contentDescription = null,
-                                        tint = ColorShopPrimary,
-                                        modifier = Modifier.size(13.dp)
-                                    )
-                                    Text(
-                                        text = "Reloj 🕒",
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ColorShopPrimary
-                                    )
-                                }
-                            }
-                        }
-
-                        // Total de Productos / Mercadería por separado
-                        OutlinedTextField(
-                            value = uiState.productAmountInput,
-                            onValueChange = onProductAmountChanged,
-                            label = { Text("Total Productos / Mercadería ($cur)", fontSize = 11.sp) },
-                            placeholder = { Text("Ej. 450", fontSize = 12.sp) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Inventory2,
-                                    contentDescription = null,
-                                    tint = ColorShopPrimary,
-                                    modifier = Modifier.size(17.dp)
-                                )
-                            },
-                            trailingIcon = {
-                                if (uiState.productAmountInput.isNotBlank()) {
-                                    IconButton(
-                                        onClick = { onProductAmountChanged("") },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "Limpiar monto productos",
-                                            tint = ColorShopMutedPlum,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                            },
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Decimal,
-                                imeAction = ImeAction.Next
-                            ),
-                            singleLine = true,
-                            shape = RoundedCornerShape(14.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ColorShopPrimary,
-                                unfocusedBorderColor = ColorShopSurfaceHigh,
-                                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
-                                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        // Comentarios del pedido
-                        OutlinedTextField(
-                            value = uiState.orderComments,
-                            onValueChange = onOrderCommentsChanged,
-                            label = { Text("Comentarios del pedido / referencias", fontSize = 11.sp) },
-                            placeholder = { Text("Ej. Portón negro, llamar al llegar, frágil...", fontSize = 12.sp) },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Notes,
-                                    contentDescription = null,
-                                    tint = ColorShopPrimary,
-                                    modifier = Modifier.size(17.dp)
-                                )
-                            },
-                            trailingIcon = {
-                                if (uiState.orderComments.isNotBlank()) {
-                                    IconButton(
-                                        onClick = { onOrderCommentsChanged("") },
-                                        modifier = Modifier.size(24.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "Limpiar comentarios",
-                                            tint = ColorShopMutedPlum,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                            },
-                            maxLines = 2,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = ColorShopPrimary,
-                                unfocusedBorderColor = ColorShopSurfaceHigh,
-                                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
-                                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-
-                        // Botón para añadir foto de recibo / respaldo
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Button(
-                                onClick = { photoPickerLauncher.launch("image/*") },
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = ColorShopSurfaceLow,
-                                    contentColor = ColorShopPrimary
-                                ),
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .border(1.dp, ColorShopPrimary.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.AddAPhoto,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = if (uiState.receiptPhotoUri.isBlank()) "Añadir Foto / Recibo" else "Cambiar Foto Adjunta",
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-
-                            if (uiState.receiptPhotoUri.isNotBlank()) {
-                                val bmp = remember(uiState.receiptPhotoUri) {
-                                    runCatching { BitmapFactory.decodeFile(uiState.receiptPhotoUri) }.getOrNull()
-                                }
-                                if (bmp != null) {
-                                    Image(
-                                        bitmap = bmp.asImageBitmap(),
-                                        contentDescription = "Foto recibo",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier
-                                            .size(42.dp)
-                                            .clip(RoundedCornerShape(10.dp))
-                                            .border(1.dp, ColorShopPrimary, RoundedCornerShape(10.dp))
-                                    )
-                                }
-                                IconButton(
-                                    onClick = { onReceiptPhotoSelected("") },
-                                    modifier = Modifier.size(32.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.DeleteOutline,
-                                        contentDescription = "Quitar foto",
-                                        tint = ColorShopPrimary
-                                    )
-                                }
-                            }
                         }
                     }
                 }
@@ -1941,6 +1701,39 @@ fun CalculatorScreen(
                             fontWeight = FontWeight.SemiBold,
                             color = ColorShopMutedPlum,
                             modifier = Modifier.padding(bottom = 3.dp)
+                        )
+                    }
+                }
+
+                // Acceso rápido a Cliente en el Dock Inferior
+                Surface(
+                    color = if (uiState.customerNote.isNotBlank()) ColorShopPinkPill else ColorShopSurfaceLow,
+                    shape = RoundedCornerShape(50),
+                    border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.25f)),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            showCustomerBottomSheet = true
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            tint = ColorShopPrimary,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = if (uiState.customerNote.isNotBlank()) "Cliente: " + uiState.customerNote.take(14) else "👤 + Datos Cliente",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ColorShopPrimary,
+                            maxLines = 1
                         )
                     }
                 }
@@ -2707,6 +2500,470 @@ fun CalculatorScreen(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    }
+
+    // 👤 Menú Modal Desplegable de Datos del Cliente y Pedido
+    if (showCustomerBottomSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showCustomerBottomSheet = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = Color.White,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "👤 Menú: Datos del Cliente y Pedido",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = ColorShopDeepPlum
+                        )
+                        Text(
+                            text = "Información para el comprobante, ruta y despacho",
+                            fontSize = 11.sp,
+                            color = ColorShopMutedPlum
+                        )
+                    }
+                    IconButton(
+                        onClick = { showCustomerBottomSheet = false },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cerrar",
+                            tint = ColorShopDeepPlum
+                        )
+                    }
+                }
+
+                HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
+
+                CustomerFieldsForm(
+                    uiState = uiState,
+                    cur = cur,
+                    context = context,
+                    haptic = haptic,
+                    photoPickerLauncher = photoPickerLauncher,
+                    onCustomerNoteChanged = onCustomerNoteChanged,
+                    onCustomerPhoneChanged = onCustomerPhoneChanged,
+                    onApproximateDeliveryTimeChanged = onApproximateDeliveryTimeChanged,
+                    onProductAmountChanged = onProductAmountChanged,
+                    onOrderCommentsChanged = onOrderCommentsChanged,
+                    onReceiptPhotoSelected = onReceiptPhotoSelected
+                )
+
+                Button(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        showCustomerBottomSheet = false
+                    },
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                ) {
+                    Text("✓ Guardar y Volver", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+
+
+@Composable
+private fun CustomerFieldsForm(
+    uiState: DeliveryUiState,
+    cur: String,
+    context: Context,
+    haptic: HapticFeedback,
+    photoPickerLauncher: ActivityResultLauncher<String>,
+    onCustomerNoteChanged: (String) -> Unit,
+    onCustomerPhoneChanged: (String) -> Unit,
+    onApproximateDeliveryTimeChanged: (String) -> Unit,
+    onProductAmountChanged: (String) -> Unit,
+    onOrderCommentsChanged: (String) -> Unit,
+    onReceiptPhotoSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Nombre del cliente o persona a recibir
+        OutlinedTextField(
+            value = uiState.customerNote,
+            onValueChange = onCustomerNoteChanged,
+            label = { Text("Cliente / Persona que recibe", fontSize = 11.sp) },
+            placeholder = { Text("Ej. María Fernanda Pérez", fontSize = 12.sp) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Person,
+                    contentDescription = null,
+                    tint = ColorShopPrimary,
+                    modifier = Modifier.size(17.dp)
+                )
+            },
+            trailingIcon = {
+                if (uiState.customerNote.isNotBlank()) {
+                    IconButton(
+                        onClick = { onCustomerNoteChanged("") },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Limpiar cliente",
+                            tint = ColorShopMutedPlum,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = ColorShopPrimary,
+                unfocusedBorderColor = ColorShopSurfaceHigh,
+                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // Fila: Número del cliente + Hora aproximada de entrega
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                value = uiState.customerPhone,
+                onValueChange = onCustomerPhoneChanged,
+                label = { Text("Teléfono cliente", fontSize = 11.sp) },
+                placeholder = { Text("8899-1122", fontSize = 12.sp) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Phone,
+                        contentDescription = null,
+                        tint = ColorShopPrimary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Phone,
+                    imeAction = ImeAction.Next
+                ),
+                singleLine = true,
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = ColorShopPrimary,
+                    unfocusedBorderColor = ColorShopSurfaceHigh,
+                    focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                    unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                ),
+                modifier = Modifier.weight(1f)
+            )
+
+            OutlinedTextField(
+                value = uiState.approximateDeliveryTime,
+                onValueChange = onApproximateDeliveryTimeChanged,
+                label = { Text("Hora aprox.", fontSize = 11.sp) },
+                placeholder = { Text("Ej. 3:30 PM", fontSize = 12.sp) },
+                leadingIcon = {
+                    IconButton(
+                        onClick = {
+                            val cal = Calendar.getInstance()
+                            TimePickerDialog(
+                                context,
+                                { _, hourOfDay, minute ->
+                                    val pickedCal = Calendar.getInstance().apply {
+                                        set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                        set(Calendar.MINUTE, minute)
+                                    }
+                                    val sdf = SimpleDateFormat("hh:mm a", Locale.US)
+                                    onApproximateDeliveryTimeChanged(sdf.format(pickedCal.time))
+                                },
+                                cal.get(Calendar.HOUR_OF_DAY),
+                                cal.get(Calendar.MINUTE),
+                                false
+                            ).show()
+                        },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AccessTime,
+                            contentDescription = "Abrir reloj",
+                            tint = ColorShopPrimary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                shape = RoundedCornerShape(14.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = ColorShopPrimary,
+                    unfocusedBorderColor = ColorShopSurfaceHigh,
+                    focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                    unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+                ),
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        // Chips de Selección Rápida de Hora Estimada
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Hora rápida:",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = ColorShopMutedPlum
+            )
+            val quickIntervals = listOf(
+                "En 30 min" to 30,
+                "En 45 min" to 45,
+                "En 1 hr" to 60
+            )
+            quickIntervals.forEach { (label, mins) ->
+                val cal = Calendar.getInstance()
+                cal.add(Calendar.MINUTE, mins)
+                val targetTime = SimpleDateFormat("hh:mm a", Locale.US).format(cal.time)
+                val isSelected = uiState.approximateDeliveryTime.startsWith(label)
+
+                Surface(
+                    color = if (isSelected) ColorShopPrimary else ColorShopSurfaceLow,
+                    shape = RoundedCornerShape(50),
+                    border = BorderStroke(
+                        1.dp,
+                        if (isSelected) ColorShopPrimary else ColorShopSurfaceHigh
+                    ),
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onApproximateDeliveryTimeChanged(label + " (~" + targetTime + ")")
+                        }
+                ) {
+                    Text(
+                        text = label,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isSelected) Color.White else ColorShopDeepPlum,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                    )
+                }
+            }
+
+            // Chip para abrir TimePickerDialog nativo
+            Surface(
+                color = ColorShopPinkPill,
+                shape = RoundedCornerShape(50),
+                border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.35f)),
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        val cal = Calendar.getInstance()
+                        TimePickerDialog(
+                            context,
+                            { _, hourOfDay, minute ->
+                                val pickedCal = Calendar.getInstance().apply {
+                                    set(Calendar.HOUR_OF_DAY, hourOfDay)
+                                    set(Calendar.MINUTE, minute)
+                                }
+                                val sdf = SimpleDateFormat("hh:mm a", Locale.US)
+                                onApproximateDeliveryTimeChanged(sdf.format(pickedCal.time))
+                            },
+                            cal.get(Calendar.HOUR_OF_DAY),
+                            cal.get(Calendar.MINUTE),
+                            false
+                        ).show()
+                    }
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccessTime,
+                        contentDescription = null,
+                        tint = ColorShopPrimary,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Text(
+                        text = "Reloj 🕒",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ColorShopPrimary
+                    )
+                }
+            }
+        }
+
+        // Total de Productos / Mercadería por separado
+        OutlinedTextField(
+            value = uiState.productAmountInput,
+            onValueChange = onProductAmountChanged,
+            label = { Text("Total Productos / Mercadería (" + cur + ")", fontSize = 11.sp) },
+            placeholder = { Text("Ej. 450", fontSize = 12.sp) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Inventory2,
+                    contentDescription = null,
+                    tint = ColorShopPrimary,
+                    modifier = Modifier.size(17.dp)
+                )
+            },
+            trailingIcon = {
+                if (uiState.productAmountInput.isNotBlank()) {
+                    IconButton(
+                        onClick = { onProductAmountChanged("") },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Limpiar monto productos",
+                            tint = ColorShopMutedPlum,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Decimal,
+                imeAction = ImeAction.Next
+            ),
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = ColorShopPrimary,
+                unfocusedBorderColor = ColorShopSurfaceHigh,
+                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // Comentarios del pedido
+        OutlinedTextField(
+            value = uiState.orderComments,
+            onValueChange = onOrderCommentsChanged,
+            label = { Text("Comentarios del pedido / referencias", fontSize = 11.sp) },
+            placeholder = { Text("Ej. Portón negro, llamar al llegar, frágil...", fontSize = 12.sp) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Notes,
+                    contentDescription = null,
+                    tint = ColorShopPrimary,
+                    modifier = Modifier.size(17.dp)
+                )
+            },
+            trailingIcon = {
+                if (uiState.orderComments.isNotBlank()) {
+                    IconButton(
+                        onClick = { onOrderCommentsChanged("") },
+                        modifier = Modifier.size(24.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Limpiar comentarios",
+                            tint = ColorShopMutedPlum,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            },
+            maxLines = 2,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            shape = RoundedCornerShape(14.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = ColorShopPrimary,
+                unfocusedBorderColor = ColorShopSurfaceHigh,
+                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
+                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // Botón para añadir foto de recibo / respaldo
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Button(
+                onClick = { photoPickerLauncher.launch("image/*") },
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ColorShopSurfaceLow,
+                    contentColor = ColorShopPrimary
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .border(1.dp, ColorShopPrimary.copy(alpha = 0.4f), RoundedCornerShape(14.dp))
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AddAPhoto,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = if (uiState.receiptPhotoUri.isBlank()) "Añadir Foto / Recibo" else "Cambiar Foto Adjunta",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            if (uiState.receiptPhotoUri.isNotBlank()) {
+                val bmp = remember(uiState.receiptPhotoUri) {
+                    runCatching { BitmapFactory.decodeFile(uiState.receiptPhotoUri) }.getOrNull()
+                }
+                if (bmp != null) {
+                    Image(
+                        bitmap = bmp.asImageBitmap(),
+                        contentDescription = "Foto recibo",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .border(1.dp, ColorShopPrimary, RoundedCornerShape(10.dp))
+                    )
+                }
+                IconButton(
+                    onClick = { onReceiptPhotoSelected("") },
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DeleteOutline,
+                        contentDescription = "Quitar foto",
+                        tint = ColorShopPrimary
+                    )
+                }
             }
         }
     }
