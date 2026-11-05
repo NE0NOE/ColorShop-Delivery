@@ -12,7 +12,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.ui.hapticfeedback.HapticFeedback
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -27,6 +26,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -174,11 +174,8 @@ fun CalculatorScreen(
     val scrollState = rememberScrollState()
 
     var showAjustesBottomSheet by remember { mutableStateOf(false) }
-    var showCustomerBottomSheet by remember { mutableStateOf(false) }
-    var showCustomerDeliveryExpanded by remember { mutableStateOf(true) }
     var showEditPriceDialog by remember { mutableStateOf(false) }
     var showDuplicateConfirmDialog by remember { mutableStateOf(false) }
-    var showPaymentCourierExpanded by remember { mutableStateOf(true) }
     var zoomTrigger by remember { mutableIntStateOf(0) }
     var resetNorthTrigger by remember { mutableIntStateOf(0) }
 
@@ -468,7 +465,7 @@ fun CalculatorScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(285.dp)
+                .height(260.dp)
                 .shadow(
                     elevation = 10.dp,
                     shape = RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp),
@@ -503,6 +500,7 @@ fun CalculatorScreen(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(start = 14.dp, top = 14.dp)
+                        .defaultMinSize(minHeight = 40.dp)
                         .clip(RoundedCornerShape(50))
                         .clickable {
                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -510,13 +508,13 @@ fun CalculatorScreen(
                         }
                 ) {
                     Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
                             text = if (isFrozen) "🔒 Destino Congelado" else "🔓 Desbloqueado",
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isFrozen) ColorShopPrimary else Color(0xFFE65100)
                         )
@@ -588,45 +586,11 @@ fun CalculatorScreen(
                     }
                 }
 
-                // Botones flotantes: Datos del Cliente y Ajustes Rápidos
+                // Botón flotante: Ajustes Rápidos
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalAlignment = Alignment.End
                 ) {
-                    // Botón flotante "👤 Cliente" para acceso directo inmediato
-                    Surface(
-                        color = if (uiState.customerNote.isNotBlank()) Color(0xFF15803D) else ColorShopPrimary,
-                        shape = RoundedCornerShape(50),
-                        shadowElevation = 6.dp,
-                        modifier = Modifier
-                            .height(44.dp)
-                            .clickable {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                showCustomerBottomSheet = true
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = "Datos del Cliente",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Text(
-                                text = if (uiState.customerNote.isNotBlank()) uiState.customerNote.take(12) else "Cliente",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1
-                            )
-                        }
-                    }
-
                     // Botón flotante "Ajustes" (Opciones y recargos de tarifa)
                     Surface(
                         color = ColorShopPrimary,
@@ -672,8 +636,7 @@ fun CalculatorScreen(
             shadowElevation = 12.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
-                .offset(y = (-24).dp)
+                .padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
@@ -689,76 +652,18 @@ fun CalculatorScreen(
                         .align(Alignment.CenterHorizontally)
                 )
 
-                // Fila de encabezado: Estado de Destino y Botón "Nueva Cotización / Limpiar"
+                // Fila de encabezado: Título "Cotización" y Botón "Nueva Cotización"
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (dest != null) {
-                        Surface(
-                            color = if (dest.isFrozen) ColorShopPrimary.copy(alpha = 0.10f) else Color(0xFFFFF3E0),
-                            shape = RoundedCornerShape(50),
-                            border = BorderStroke(
-                                1.dp,
-                                if (dest.isFrozen) ColorShopPrimary.copy(alpha = 0.35f) else Color(0xFFFF9800)
-                            ),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(50))
-                                .clickable {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onToggleFreezeLock()
-                        }
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Text(
-                                    text = if (dest.isFrozen) "🔒 Destino Congelado" else "🔓 Desbloqueado",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (dest.isFrozen) ColorShopPrimary else Color(0xFFE65100)
-                                )
-                            }
-                        }
-                    } else {
-                        Spacer(modifier = Modifier.width(1.dp))
-                    }
-
-                    // Acceso directo al Menú de Datos del Cliente
-                    Surface(
-                        color = if (uiState.customerNote.isNotBlank()) ColorShopPinkPill else ColorShopSurfaceLow,
-                        shape = RoundedCornerShape(50),
-                        border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.35f)),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .clickable {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                showCustomerBottomSheet = true
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = null,
-                                tint = ColorShopPrimary,
-                                modifier = Modifier.size(13.dp)
-                            )
-                            Text(
-                                text = if (uiState.customerNote.isNotBlank()) "👤 " + uiState.customerNote.take(14) else "👤 Datos Cliente",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = ColorShopPrimary,
-                                maxLines = 1
-                            )
-                        }
-                    }
+                    Text(
+                        text = "Cotización",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = ColorShopDeepPlum
+                    )
 
                     // Botón 'Limpiar / Nueva Cotización'
                     Surface(
@@ -766,6 +671,7 @@ fun CalculatorScreen(
                         shape = RoundedCornerShape(50),
                         border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.25f)),
                         modifier = Modifier
+                            .defaultMinSize(minHeight = 40.dp)
                             .clip(RoundedCornerShape(50))
                             .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -774,7 +680,7 @@ fun CalculatorScreen(
                             }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
@@ -782,11 +688,11 @@ fun CalculatorScreen(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = null,
                                 tint = ColorShopPrimary,
-                                modifier = Modifier.size(13.dp)
+                                modifier = Modifier.size(15.dp)
                             )
                             Text(
                                 text = "Nueva Cotización",
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ColorShopPrimary
                             )
@@ -1159,15 +1065,9 @@ fun CalculatorScreen(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // Título y distintivo visual (Acordeón desplegable / plegable)
+                        // Título y distintivo visual
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    showCustomerDeliveryExpanded = !showCustomerDeliveryExpanded
-                                },
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1192,7 +1092,7 @@ fun CalculatorScreen(
                                 }
                                 Column {
                                     Text(
-                                        text = "👤 Datos del Cliente y Pedido",
+                                        text = "Datos del Cliente y Pedido",
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.ExtraBold,
                                         color = ColorShopDeepPlum
@@ -1207,32 +1107,13 @@ fun CalculatorScreen(
                                 }
                             }
 
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                if (uiState.customerNote.isNotBlank()) {
-                                    Surface(
-                                        color = ColorShopPinkPill,
-                                        shape = RoundedCornerShape(50)
-                                    ) {
-                                        Text(
-                                            text = "✓ Listo",
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = ColorShopPrimary,
-                                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                                        )
-                                    }
-                                }
-
+                            if (uiState.customerNote.isNotBlank()) {
                                 Surface(
-                                    color = if (showCustomerDeliveryExpanded) ColorShopPinkPill else ColorShopSurfaceLow,
-                                    shape = RoundedCornerShape(50),
-                                    border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.25f))
+                                    color = ColorShopPinkPill,
+                                    shape = RoundedCornerShape(50)
                                 ) {
                                     Text(
-                                        text = if (showCustomerDeliveryExpanded) "Ocultar ▲" else "Completar ▼",
+                                        text = "✓ Listo",
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = ColorShopPrimary,
@@ -1242,26 +1123,24 @@ fun CalculatorScreen(
                             }
                         }
 
-                        if (showCustomerDeliveryExpanded) {
-                            HorizontalDivider(
-                                color = ColorShopSurfaceHigh.copy(alpha = 0.6f),
-                                thickness = 1.dp
-                            )
+                        HorizontalDivider(
+                            color = ColorShopSurfaceHigh.copy(alpha = 0.6f),
+                            thickness = 1.dp
+                        )
 
-                            CustomerFieldsForm(
-                                uiState = uiState,
-                                cur = cur,
-                                context = context,
-                                haptic = haptic,
-                                photoPickerLauncher = photoPickerLauncher,
-                                onCustomerNoteChanged = onCustomerNoteChanged,
-                                onCustomerPhoneChanged = onCustomerPhoneChanged,
-                                onApproximateDeliveryTimeChanged = onApproximateDeliveryTimeChanged,
-                                onProductAmountChanged = onProductAmountChanged,
-                                onOrderCommentsChanged = onOrderCommentsChanged,
-                                onReceiptPhotoSelected = onReceiptPhotoSelected
-                            )
-                        }
+                        CustomerFieldsForm(
+                            uiState = uiState,
+                            cur = cur,
+                            context = context,
+                            haptic = haptic,
+                            photoPickerLauncher = photoPickerLauncher,
+                            onCustomerNoteChanged = onCustomerNoteChanged,
+                            onCustomerPhoneChanged = onCustomerPhoneChanged,
+                            onApproximateDeliveryTimeChanged = onApproximateDeliveryTimeChanged,
+                            onProductAmountChanged = onProductAmountChanged,
+                            onOrderCommentsChanged = onOrderCommentsChanged,
+                            onReceiptPhotoSelected = onReceiptPhotoSelected
+                        )
                     }
                 }
 
@@ -1278,308 +1157,276 @@ fun CalculatorScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    showPaymentCourierExpanded = !showPaymentCourierExpanded
-                                },
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                modifier = Modifier.weight(1f)
+                            Box(
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .clip(CircleShape)
+                                    .background(ColorShopPrimary.copy(alpha = 0.12f)),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(32.dp)
-                                        .clip(CircleShape)
-                                        .background(ColorShopPrimary.copy(alpha = 0.12f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("💳", fontSize = 16.sp)
-                                }
-                                Column {
-                                    Text(
-                                        text = "Cobro y Repartidor",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = ColorShopDeepPlum
-                                    )
-                                    val courierLabel = uiState.selectedCourier?.name ?: "Sin asignar"
-                                    Text(
-                                        text = "${uiState.selectedPaymentMethod.badgeLabel} • $courierLabel",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = ColorShopPrimary
-                                    )
-                                }
+                                Text("💳", fontSize = 16.sp)
                             }
-                            Surface(
-                                color = if (showPaymentCourierExpanded) ColorShopPinkPill else ColorShopSurfaceLow,
-                                shape = RoundedCornerShape(50),
-                                border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.25f))
-                            ) {
+                            Column {
                                 Text(
-                                    text = if (showPaymentCourierExpanded) "Ocultar ▲" else "Configurar ▼",
+                                    text = "Cobro y Repartidor",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = ColorShopDeepPlum
+                                )
+                                val courierLabel = uiState.selectedCourier?.name ?: "Sin asignar"
+                                Text(
+                                    text = "${uiState.selectedPaymentMethod.badgeLabel} • $courierLabel",
                                     fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ColorShopPrimary,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = ColorShopPrimary
                                 )
                             }
                         }
 
-                        AnimatedVisibility(visible = showPaymentCourierExpanded) {
+                        // Selector de Forma de Pago y Banco
+                        Surface(
+                            color = Color.White,
+                            shape = RoundedCornerShape(14.dp),
+                            shadowElevation = 1.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(14.dp))
+                        ) {
                             Column(
-                                verticalArrangement = Arrangement.spacedBy(10.dp),
-                                modifier = Modifier.padding(top = 4.dp)
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                // Selector de Forma de Pago y Banco
-                                Surface(
-                                    color = Color.White,
-                                    shape = RoundedCornerShape(14.dp),
-                                    shadowElevation = 1.dp,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(14.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "Forma de Pago del Pedido:",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ColorShopDeepPlum
-                                            )
-                                            Text(
-                                                text = uiState.selectedPaymentMethod.badgeLabel,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = ColorShopPrimary
-                                            )
-                                        }
-
-                                        // Chips: Efectivo, Transferencia, POS Tarjeta
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            PaymentMethodType.entries.forEach { method ->
-                                                val isSelected = uiState.selectedPaymentMethod == method
-                                                FilterChip(
-                                                    selected = isSelected,
-                                                    onClick = { onSelectPaymentMethod(method) },
-                                                    label = { Text(method.badgeLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                                    modifier = Modifier.weight(1f),
-                                                    colors = FilterChipDefaults.filterChipColors(
-                                                        selectedContainerColor = ColorShopMagenta,
-                                                        selectedLabelColor = Color.White
-                                                    )
-                                                )
-                                            }
-                                        }
-
-                                        // Si es Transferencia, mostrar los bancos (BAC, Lafise, Banpro, Ficohsa)
-                                        if (uiState.selectedPaymentMethod == PaymentMethodType.TRANSFER) {
-                                            HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
-                                            Text(
-                                                text = "Banco receptor para la transferencia:",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = ColorShopMutedPlum
-                                            )
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .horizontalScroll(rememberScrollState()),
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                TransferBankType.entries.forEach { bank ->
-                                                    val isSelected = uiState.selectedTransferBank == bank
-                                                    FilterChip(
-                                                        selected = isSelected,
-                                                        onClick = { onSelectTransferBank(bank) },
-                                                        label = { Text("🏦 ${bank.displayName}", fontSize = 11.sp) },
-                                                        colors = FilterChipDefaults.filterChipColors(
-                                                            selectedContainerColor = ColorShopPrimary,
-                                                            selectedLabelColor = Color.White
-                                                        )
-                                                    )
-                                                }
-                                            }
-
-                                            HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
-                                            Text(
-                                                text = "Momento del pago / Depósito:",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = ColorShopMutedPlum
-                                            )
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .horizontalScroll(rememberScrollState()),
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                FilterChip(
-                                                    selected = !uiState.isPaymentPendingOnDelivery,
-                                                    onClick = { onSetPaymentPendingOnDelivery(false) },
-                                                    label = { Text("✅ Ya Acreditada (C$ 0 al recibir)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                                    colors = FilterChipDefaults.filterChipColors(
-                                                        selectedContainerColor = Color(0xFF2E7D32),
-                                                        selectedLabelColor = Color.White
-                                                    )
-                                                )
-                                                FilterChip(
-                                                    selected = uiState.isPaymentPendingOnDelivery,
-                                                    onClick = { onSetPaymentPendingOnDelivery(true) },
-                                                    label = { Text("⏳ Transferir al Recibir (Contra Entrega)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                                    colors = FilterChipDefaults.filterChipColors(
-                                                        selectedContainerColor = Color(0xFFE65100),
-                                                        selectedLabelColor = Color.White
-                                                    )
-                                                )
-                                            }
-                                        }
-
-                                        // Si es POS Datáfono
-                                        if (uiState.selectedPaymentMethod == PaymentMethodType.POS) {
-                                            HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
-                                            Text(
-                                                text = "Cobro con Datáfono POS:",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = ColorShopMutedPlum
-                                            )
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .horizontalScroll(rememberScrollState()),
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                FilterChip(
-                                                    selected = uiState.isPaymentPendingOnDelivery,
-                                                    onClick = { onSetPaymentPendingOnDelivery(true) },
-                                                    label = { Text("💳 Cobrar con POS al Entregar", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                                    colors = FilterChipDefaults.filterChipColors(
-                                                        selectedContainerColor = Color(0xFFE65100),
-                                                        selectedLabelColor = Color.White
-                                                    )
-                                                )
-                                                FilterChip(
-                                                    selected = !uiState.isPaymentPendingOnDelivery,
-                                                    onClick = { onSetPaymentPendingOnDelivery(false) },
-                                                    label = { Text("✅ Ya Cobrado en Tienda", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                                    colors = FilterChipDefaults.filterChipColors(
-                                                        selectedContainerColor = Color(0xFF2E7D32),
-                                                        selectedLabelColor = Color.White
-                                                    )
-                                                )
-                                            }
-                                        }
-                                    }
+                                    Text(
+                                        text = "Forma de Pago del Pedido:",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopDeepPlum
+                                    )
+                                    Text(
+                                        text = uiState.selectedPaymentMethod.badgeLabel,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = ColorShopPrimary
+                                    )
                                 }
 
-                                // Resumen de liquidación para el conductor según método de pago y banco
-                                if (quote != null) {
-                                    val settlementPreview = RoutingAndFareCalculator.buildDriverSettlementNote(
-                                        paymentMethod = uiState.selectedPaymentMethod,
-                                        transferBank = uiState.selectedTransferBank,
-                                        productAmount = uiState.productAmount,
-                                        deliveryFee = quote.effectiveTotal,
-                                        currencySymbol = cur,
-                                        isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery
-                                    )
-                                    Surface(
-                                        color = ColorShopSurfaceLow.copy(alpha = 0.5f),
-                                        shape = RoundedCornerShape(12.dp),
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .border(1.dp, ColorShopPrimary.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
-                                    ) {
-                                        Text(
-                                            text = settlementPreview,
-                                            fontSize = 10.sp,
-                                            color = ColorShopDeepPlum,
-                                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                // Chips: Efectivo, Transferencia, POS Tarjeta
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    PaymentMethodType.entries.forEach { method ->
+                                        val isSelected = uiState.selectedPaymentMethod == method
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { onSelectPaymentMethod(method) },
+                                            label = { Text(method.badgeLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                            modifier = Modifier.weight(1f),
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = ColorShopMagenta,
+                                                selectedLabelColor = Color.White
+                                            )
                                         )
                                     }
                                 }
 
-                                // Selector Rápido de Motorizado
-                                Surface(
-                                    color = Color.White,
-                                    shape = RoundedCornerShape(14.dp),
-                                    shadowElevation = 1.dp,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(14.dp))
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                // Si es Transferencia, mostrar los bancos (BAC, Lafise, Banpro, Ficohsa)
+                                if (uiState.selectedPaymentMethod == PaymentMethodType.TRANSFER) {
+                                    HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
+                                    Text(
+                                        text = "Banco receptor para la transferencia:",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = ColorShopMutedPlum
+                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.AutoMirrored.Filled.DirectionsBike,
-                                                    contentDescription = null,
-                                                    tint = ColorShopPrimary,
-                                                    modifier = Modifier.size(16.dp)
+                                        TransferBankType.entries.forEach { bank ->
+                                            val isSelected = uiState.selectedTransferBank == bank
+                                            FilterChip(
+                                                selected = isSelected,
+                                                onClick = { onSelectTransferBank(bank) },
+                                                label = { Text("🏦 ${bank.displayName}", fontSize = 11.sp) },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = ColorShopPrimary,
+                                                    selectedLabelColor = Color.White
                                                 )
-                                                Text(
-                                                    text = "Motorizado asignado:",
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = ColorShopDeepPlum
-                                                )
-                                            }
-                                            Text(
-                                                text = uiState.selectedCourier?.name ?: "Sin asignar",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                color = ColorShopPrimary
                                             )
                                         }
+                                    }
 
-                                        // Lista horizontal de chips con los repartidores registrados
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .horizontalScroll(rememberScrollState()),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            uiState.couriers.forEach { courier ->
-                                                val isSelected = uiState.selectedCourier?.id == courier.id
-                                                FilterChip(
-                                                    selected = isSelected,
-                                                    onClick = { onSelectCourier(courier) },
-                                                    label = { Text("🛵 ${courier.name}") },
-                                                    colors = FilterChipDefaults.filterChipColors(
-                                                        selectedContainerColor = ColorShopPrimary,
-                                                        selectedLabelColor = Color.White
-                                                    )
-                                                )
-                                            }
-                                        }
+                                    HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
+                                    Text(
+                                        text = "Momento del pago / Depósito:",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = ColorShopMutedPlum
+                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        FilterChip(
+                                            selected = !uiState.isPaymentPendingOnDelivery,
+                                            onClick = { onSetPaymentPendingOnDelivery(false) },
+                                            label = { Text("✅ Ya Acreditada (C$ 0 al recibir)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = Color(0xFF2E7D32),
+                                                selectedLabelColor = Color.White
+                                            )
+                                        )
+                                        FilterChip(
+                                            selected = uiState.isPaymentPendingOnDelivery,
+                                            onClick = { onSetPaymentPendingOnDelivery(true) },
+                                            label = { Text("⏳ Transferir al Recibir (Contra Entrega)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = Color(0xFFE65100),
+                                                selectedLabelColor = Color.White
+                                            )
+                                        )
+                                    }
+                                }
+
+                                // Si es POS Datáfono
+                                if (uiState.selectedPaymentMethod == PaymentMethodType.POS) {
+                                    HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
+                                    Text(
+                                        text = "Cobro con Datáfono POS:",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = ColorShopMutedPlum
+                                    )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        FilterChip(
+                                            selected = uiState.isPaymentPendingOnDelivery,
+                                            onClick = { onSetPaymentPendingOnDelivery(true) },
+                                            label = { Text("💳 Cobrar con POS al Entregar", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = Color(0xFFE65100),
+                                                selectedLabelColor = Color.White
+                                            )
+                                        )
+                                        FilterChip(
+                                            selected = !uiState.isPaymentPendingOnDelivery,
+                                            onClick = { onSetPaymentPendingOnDelivery(false) },
+                                            label = { Text("✅ Ya Cobrado en Tienda", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = Color(0xFF2E7D32),
+                                                selectedLabelColor = Color.White
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Resumen de liquidación para el conductor según método de pago y banco
+                        if (quote != null) {
+                            val settlementPreview = RoutingAndFareCalculator.buildDriverSettlementNote(
+                                paymentMethod = uiState.selectedPaymentMethod,
+                                transferBank = uiState.selectedTransferBank,
+                                productAmount = uiState.productAmount,
+                                deliveryFee = quote.effectiveTotal,
+                                currencySymbol = cur,
+                                isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery
+                            )
+                            Surface(
+                                color = ColorShopSurfaceLow.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .border(1.dp, ColorShopPrimary.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                            ) {
+                                Text(
+                                    text = settlementPreview,
+                                    fontSize = 11.sp,
+                                    color = ColorShopDeepPlum,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+
+                        // Selector Rápido de Motorizado
+                        Surface(
+                            color = Color.White,
+                            shape = RoundedCornerShape(14.dp),
+                            shadowElevation = 1.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(14.dp))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.DirectionsBike,
+                                            contentDescription = null,
+                                            tint = ColorShopPrimary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Text(
+                                            text = "Motorizado asignado:",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorShopDeepPlum
+                                        )
+                                    }
+                                    Text(
+                                        text = uiState.selectedCourier?.name ?: "Sin asignar",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = ColorShopPrimary
+                                    )
+                                }
+
+                                // Lista horizontal de chips con los repartidores registrados
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState()),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    uiState.couriers.forEach { courier ->
+                                        val isSelected = uiState.selectedCourier?.id == courier.id
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = { onSelectCourier(courier) },
+                                            label = { Text("🛵 ${courier.name}") },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = ColorShopPrimary,
+                                                selectedLabelColor = Color.White
+                                            )
+                                        )
                                     }
                                 }
                             }
@@ -1595,29 +1442,31 @@ fun CalculatorScreen(
                 ) {
                     Text(
                         text = "Formato al compartir:",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
                         color = ColorShopMutedPlum
                     )
                     Surface(
                         color = ColorShopSurfaceHigh,
                         shape = RoundedCornerShape(50),
-                        modifier = Modifier.clickable { onOpenSettings() }
+                        modifier = Modifier
+                            .defaultMinSize(minHeight = 36.dp)
+                            .clickable { onOpenSettings() }
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
                             Text(
                                 text = if (cfg.defaultShareFormat == ShareOutputFormat.IMAGE_RECEIPT) "🖼️ Recibo en Imagen" else "💬 Mensaje de Texto",
-                                fontSize = 11.sp,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ColorShopPrimary
                             )
                             Text(
                                 text = "Ajustar",
-                                fontSize = 9.sp,
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ColorShopMutedPlum
                             )
@@ -1658,7 +1507,7 @@ fun CalculatorScreen(
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Fila Superior del Dock: Gran Total y Detalle de Repartidor / Distancia
+            // Fila Superior del Dock: Gran Total
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1701,82 +1550,6 @@ fun CalculatorScreen(
                             fontWeight = FontWeight.SemiBold,
                             color = ColorShopMutedPlum,
                             modifier = Modifier.padding(bottom = 3.dp)
-                        )
-                    }
-                }
-
-                // Acceso rápido a Cliente en el Dock Inferior
-                Surface(
-                    color = if (uiState.customerNote.isNotBlank()) ColorShopPinkPill else ColorShopSurfaceLow,
-                    shape = RoundedCornerShape(50),
-                    border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.25f)),
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(50))
-                        .clickable {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            showCustomerBottomSheet = true
-                        }
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            tint = ColorShopPrimary,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Text(
-                            text = if (uiState.customerNote.isNotBlank()) "Cliente: " + uiState.customerNote.take(14) else "👤 + Datos Cliente",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = ColorShopPrimary,
-                            maxLines = 1
-                        )
-                    }
-                }
-
-                if (quote != null && dest != null) {
-                    Column(
-                        horizontalAlignment = Alignment.End,
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Surface(
-                            color = ColorShopPinkPill,
-                            shape = RoundedCornerShape(50)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.DirectionsBike,
-                                    contentDescription = null,
-                                    tint = ColorShopPrimary,
-                                    modifier = Modifier.size(13.dp)
-                                )
-                                Text(
-                                    text = uiState.selectedCourier?.name ?: "Sin motorizado",
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ColorShopDeepPlum,
-                                    maxLines = 1
-                                )
-                            }
-                        }
-                        Text(
-                            text = String.format(
-                                Locale.US,
-                                "%.1f km • ~%d min",
-                                quote.effectiveDistanceKm,
-                                (quote.durationMinutes?.roundToInt() ?: 14).coerceAtLeast(1)
-                            ),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = ColorShopMutedPlum
                         )
                     }
                 }
@@ -2255,7 +2028,7 @@ fun CalculatorScreen(
         )
     }
 
-    // Bottom Sheet de "Ajustes" (Opciones rápidas de recargos, zonas, repartidor, método de pago y bancos)
+    // Bottom Sheet de "Ajustes" (Ajustes rápidos: recargos, zona aledaña y modo de cálculo)
     if (showAjustesBottomSheet) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
@@ -2356,118 +2129,6 @@ fun CalculatorScreen(
                     }
                 }
 
-                // Selección de Forma de Cobro
-                Text(
-                    text = "Forma de Cobro del Pedido:",
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = ColorShopMutedPlum
-                )
-
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    PaymentMethodType.entries.forEach { method ->
-                        FilterChip(
-                            selected = uiState.selectedPaymentMethod == method,
-                            onClick = { onSelectPaymentMethod(method) },
-                            label = { Text(method.badgeLabel) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = ColorShopMagenta,
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                    }
-                }
-
-                // Selector de Banco si es Transferencia Bancaria (BAC, Lafise, Banpro, Ficohsa)
-                if (uiState.selectedPaymentMethod == PaymentMethodType.TRANSFER) {
-                    Text(
-                        text = "Banco de Transferencia:",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ColorShopMutedPlum
-                    )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        TransferBankType.entries.forEach { bank ->
-                            FilterChip(
-                                selected = uiState.selectedTransferBank == bank,
-                                onClick = { onSelectTransferBank(bank) },
-                                label = { Text("🏦 ${bank.displayName}") },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = ColorShopPrimary,
-                                    selectedLabelColor = Color.White
-                                )
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = "Momento del pago / Depósito:",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ColorShopMutedPlum
-                    )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        FilterChip(
-                            selected = !uiState.isPaymentPendingOnDelivery,
-                            onClick = { onSetPaymentPendingOnDelivery(false) },
-                            label = { Text("✅ Ya Acreditada (C$ 0 al recibir)") },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color(0xFF2E7D32),
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                        FilterChip(
-                            selected = uiState.isPaymentPendingOnDelivery,
-                            onClick = { onSetPaymentPendingOnDelivery(true) },
-                            label = { Text("⏳ Transferir al Recibir (Contra Entrega)") },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color(0xFFE65100),
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                    }
-                }
-
-                if (uiState.selectedPaymentMethod == PaymentMethodType.POS) {
-                    Text(
-                        text = "Cobro con Datáfono POS:",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ColorShopMutedPlum
-                    )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        FilterChip(
-                            selected = uiState.isPaymentPendingOnDelivery,
-                            onClick = { onSetPaymentPendingOnDelivery(true) },
-                            label = { Text("💳 Cobrar con POS al Entregar") },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color(0xFFE65100),
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                        FilterChip(
-                            selected = !uiState.isPaymentPendingOnDelivery,
-                            onClick = { onSetPaymentPendingOnDelivery(false) },
-                            label = { Text("✅ Ya Cobrado en Tienda") },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color(0xFF2E7D32),
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                    }
-                }
 
                 // Modo de cálculo (OSRM vs Línea Recta)
                 Row(
@@ -2500,87 +2161,6 @@ fun CalculatorScreen(
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
-            }
-        }
-    }
-
-    // 👤 Menú Modal Desplegable de Datos del Cliente y Pedido
-    if (showCustomerBottomSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showCustomerBottomSheet = false },
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-            containerColor = Color.White,
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .imePadding()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 20.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "👤 Menú: Datos del Cliente y Pedido",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = ColorShopDeepPlum
-                        )
-                        Text(
-                            text = "Información para el comprobante, ruta y despacho",
-                            fontSize = 11.sp,
-                            color = ColorShopMutedPlum
-                        )
-                    }
-                    IconButton(
-                        onClick = { showCustomerBottomSheet = false },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Cerrar",
-                            tint = ColorShopDeepPlum
-                        )
-                    }
-                }
-
-                HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
-
-                CustomerFieldsForm(
-                    uiState = uiState,
-                    cur = cur,
-                    context = context,
-                    haptic = haptic,
-                    photoPickerLauncher = photoPickerLauncher,
-                    onCustomerNoteChanged = onCustomerNoteChanged,
-                    onCustomerPhoneChanged = onCustomerPhoneChanged,
-                    onApproximateDeliveryTimeChanged = onApproximateDeliveryTimeChanged,
-                    onProductAmountChanged = onProductAmountChanged,
-                    onOrderCommentsChanged = onOrderCommentsChanged,
-                    onReceiptPhotoSelected = onReceiptPhotoSelected
-                )
-
-                Button(
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        showCustomerBottomSheet = false
-                    },
-                    shape = RoundedCornerShape(50),
-                    colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                ) {
-                    Text("✓ Guardar y Volver", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
@@ -2816,7 +2396,7 @@ private fun CustomerFieldsForm(
                     )
                     Text(
                         text = "Reloj 🕒",
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = ColorShopPrimary
                     )
@@ -2977,10 +2557,10 @@ private fun ActiveMiniBadge(text: String) {
     ) {
         Text(
             text = text,
-            fontSize = 10.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
             color = ColorShopPrimary,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
         )
     }
 }
