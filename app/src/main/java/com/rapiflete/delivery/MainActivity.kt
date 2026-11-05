@@ -7,58 +7,28 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.launch
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.rapiflete.delivery.ui.components.ColorShopSplashScreen
 import com.rapiflete.delivery.ui.screens.CalculatorScreen
 import com.rapiflete.delivery.ui.screens.CouriersScreen
 import com.rapiflete.delivery.ui.screens.HistoryScreen
 import com.rapiflete.delivery.ui.screens.SettingsScreen
-import com.rapiflete.delivery.ui.theme.ColorShopMutedPlum
-import com.rapiflete.delivery.ui.theme.ColorShopPinkPill
-import com.rapiflete.delivery.ui.theme.ColorShopPrimary
 import com.rapiflete.delivery.ui.theme.ColorShopSurface
 import com.rapiflete.delivery.ui.theme.RapiFleteTheme
 import com.rapiflete.delivery.viewmodel.DeliveryViewModel
@@ -86,7 +56,6 @@ class MainActivity : ComponentActivity() {
                     initialPage = currentTab.coerceIn(0, 2),
                     pageCount = { 3 }
                 )
-                val coroutineScope = rememberCoroutineScope()
 
                 // Sincronización cuando cambia currentTab programáticamente (botones, atajos, historial)
                 LaunchedEffect(currentTab) {
@@ -118,23 +87,7 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier
                             .fillMaxSize()
                             .imePadding(),
-                        containerColor = ColorShopSurface,
-                        bottomBar = {
-                            ColorShopBottomNavBar(
-                                selectedIndex = if (currentTab == 3) 2 else pagerState.currentPage,
-                                onSelectTab = { tabIndex ->
-                                    if (currentTab != tabIndex) {
-                                        focusManager.clearFocus()
-                                        currentTab = tabIndex
-                                        coroutineScope.launch {
-                                            if (pagerState.currentPage != tabIndex) {
-                                                pagerState.animateScrollToPage(tabIndex)
-                                            }
-                                        }
-                                    }
-                                }
-                            )
-                        }
+                        containerColor = ColorShopSurface
                     ) { innerPadding ->
                         Box(
                             modifier = Modifier
@@ -283,77 +236,3 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable
-private fun ColorShopBottomNavBar(
-    selectedIndex: Int,
-    onSelectTab: (Int) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        color = ColorShopSurface.copy(alpha = 0.94f),
-        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-        shadowElevation = 16.dp,
-        modifier = modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            BottomNavPillItem(
-                icon = Icons.Default.Calculate,
-                label = "Cotizar",
-                selected = selectedIndex == 0,
-                onClick = { onSelectTab(0) }
-            )
-            BottomNavPillItem(
-                icon = Icons.Default.History,
-                label = "Historial",
-                selected = selectedIndex == 1,
-                onClick = { onSelectTab(1) }
-            )
-            BottomNavPillItem(
-                icon = Icons.Default.Settings,
-                label = "Configuración",
-                selected = selectedIndex == 2,
-                onClick = { onSelectTab(2) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun BottomNavPillItem(
-    icon: ImageVector,
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    val bgColor = if (selected) ColorShopPinkPill else Color.Transparent
-    val contentColor = if (selected) ColorShopPrimary else ColorShopMutedPlum.copy(alpha = 0.72f)
-
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(bgColor)
-            .clickable { onClick() }
-            .padding(horizontal = 22.dp, vertical = 7.dp)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = contentColor,
-            modifier = Modifier.size(22.dp)
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = label,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
-            color = contentColor
-        )
-    }
-}

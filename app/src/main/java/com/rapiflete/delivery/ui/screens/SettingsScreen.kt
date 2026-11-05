@@ -7,8 +7,8 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -60,12 +60,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -80,11 +83,18 @@ import androidx.compose.ui.unit.sp
 import com.rapiflete.delivery.model.CourierDriver
 import com.rapiflete.delivery.model.DEFAULT_CUSTOMER_MESSAGE_TEMPLATE
 import com.rapiflete.delivery.model.DEFAULT_DRIVER_DISPATCH_TEMPLATE
+import com.rapiflete.delivery.model.DistanceCalculationMode
+import com.rapiflete.delivery.model.FrozenDestination
+import com.rapiflete.delivery.model.GeoCoordinate
+import com.rapiflete.delivery.model.OrderStatus
+import com.rapiflete.delivery.model.PaymentMethodType
+import com.rapiflete.delivery.model.QuoteBreakdown
 import com.rapiflete.delivery.model.RoundingMode
 import com.rapiflete.delivery.model.ShareOutputFormat
 import com.rapiflete.delivery.model.SpecialZoneRule
 import com.rapiflete.delivery.model.StoreAndPricingConfig
 import com.rapiflete.delivery.model.SurchargeType
+import com.rapiflete.delivery.model.TransferBankType
 import com.rapiflete.delivery.ui.components.ColorShopTopBar
 import com.rapiflete.delivery.ui.theme.ColorShopDeepPlum
 import com.rapiflete.delivery.ui.theme.ColorShopMagenta
@@ -96,6 +106,7 @@ import com.rapiflete.delivery.ui.theme.ColorShopSurfaceHigh
 import com.rapiflete.delivery.ui.theme.ColorShopSurfaceLow
 import com.rapiflete.delivery.ui.theme.ColorShopTertiaryBlue
 import com.rapiflete.delivery.ui.theme.ColorShopTertiaryFixed
+import com.rapiflete.delivery.util.ReceiptImageGenerator
 import com.rapiflete.delivery.util.RoutingAndFareCalculator
 import java.util.Locale
 
@@ -157,7 +168,8 @@ fun SettingsScreen(
     var preferentialDiscountText by remember(currentConfig) { mutableStateOf(currentConfig.preferentialDiscountPercent.toString()) }
 
     var isTemplatesExpanded by remember { mutableStateOf(false) }
-    var showLivePreview by remember { mutableStateOf(false) }
+    var showLivePreview by rememberSaveable { mutableStateOf(false) }
+    var previewFormatMode by rememberSaveable { mutableIntStateOf(0) } // 0 = Texto WhatsApp, 1 = Recibo en Imagen
     var selectedTemplateTab by remember { mutableIntStateOf(0) } // 0 = Cliente, 1 = Motorizado
     var customerTemplateValue by remember(currentConfig) {
         mutableStateOf(TextFieldValue(currentConfig.customerMessageTemplate))
@@ -260,20 +272,6 @@ fun SettingsScreen(
     val activeTemplateText = if (selectedTemplateTab == 0) customerTemplateValue.text else driverTemplateValue.text
     val livePreviewResolved = remember(activeTemplateText, sampleVariables) {
         RoutingAndFareCalculator.resolveTemplate(activeTemplateText, sampleVariables)
-    }
-
-    val hasUnsavedChanges = remember(
-        storeName, storeLatText, storeLngText, storePlusCode,
-        currencySymbol, minimumFareText, includedKmText, costPerExtraKmText,
-        weekdayOpen, weekdayClose, saturdayEnabled, satOpen, satClose,
-        sundayEnabled, sunOpen, sunClose, autoDetectOffHours,
-        offHoursType, offHoursValText, holidayType, holidayValText,
-        rainType, rainValText, roundingMode, defaultShareFormat,
-        preferentialAutoPrompt, preferentialThresholdText, preferentialDiscountText,
-        customerTemplateValue.text, driverTemplateValue.text,
-        currentConfig
-    ) {
-        buildCurrentConfig() != currentConfig
     }
 
     Box(
@@ -1748,16 +1746,175 @@ fun SettingsScreen(
                                 }
                             }
 
-                            // Vista Previa en Vivo con estilo WhatsApp
+                            // Vista Previa en Vivo con estilo WhatsApp o Imagen Digital
                             AnimatedVisibility(
                                 visible = showLivePreview,
                                 enter = fadeIn() + expandVertically(),
                                 exit = fadeOut() + shrinkVertically()
                             ) {
-                                WhatsAppPreviewBubble(
-                                    isCustomer = selectedTemplateTab == 0,
-                                    resolvedText = livePreviewResolved
-                                )
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    // Selector interactivo de Formato de Previsualización: Texto vs Imagen
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = 8.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Surface(
+                                            color = if (previewFormatMode == 0) ColorShopPrimary else ColorShopSurfaceLow,
+                                            shape = RoundedCornerShape(50),
+                                            border = BorderStroke(1.dp, if (previewFormatMode == 0) ColorShopPrimary else ColorShopSurfaceHigh),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { previewFormatMode = 0 }
+                                        ) {
+                                            Text(
+                                                text = "💬 Texto WhatsApp",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (previewFormatMode == 0) Color.White else ColorShopDeepPlum,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.padding(vertical = 6.dp)
+                                            )
+                                        }
+
+                                        Surface(
+                                            color = if (previewFormatMode == 1) ColorShopPrimary else ColorShopSurfaceLow,
+                                            shape = RoundedCornerShape(50),
+                                            border = BorderStroke(1.dp, if (previewFormatMode == 1) ColorShopPrimary else ColorShopSurfaceHigh),
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clickable { previewFormatMode = 1 }
+                                        ) {
+                                            Text(
+                                                text = "🖼️ Recibo en Imagen",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = if (previewFormatMode == 1) Color.White else ColorShopDeepPlum,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.padding(vertical = 6.dp)
+                                            )
+                                        }
+                                    }
+
+                                    if (previewFormatMode == 0) {
+                                        WhatsAppPreviewBubble(
+                                            isCustomer = selectedTemplateTab == 0,
+                                            resolvedText = livePreviewResolved
+                                        )
+                                    } else {
+                                        val config = buildCurrentConfig()
+                                        val sampleReceiptBitmap = remember(config, selectedTemplateTab) {
+                                            runCatching {
+                                                val sampleDest = FrozenDestination(
+                                                    coordinate = GeoCoordinate(config.storeLat + 0.025, config.storeLng + 0.025),
+                                                    label = "Colonia Los Robles, Managua",
+                                                    sourceRawText = "Los Robles",
+                                                    capturedAtTime = "02:30 PM",
+                                                    isFrozen = true
+                                                )
+                                                val sampleQuote = QuoteBreakdown(
+                                                    effectiveDistanceKm = 4.2,
+                                                    straightLineKm = 3.2,
+                                                    adjustedStraightLineKm = 4.2,
+                                                    osrmDrivingKm = 4.2,
+                                                    durationMinutes = 14.0,
+                                                    usedMode = DistanceCalculationMode.OSRM_DRIVING,
+                                                    baseMinimumFare = config.minimumFare,
+                                                    includedKm = config.includedKmInMinimum,
+                                                    extraKm = 2.2,
+                                                    costPerExtraKm = config.costPerExtraKm,
+                                                    extraDistanceCharge = 22.0,
+                                                    subtotalBeforeSurcharges = config.minimumFare + 22.0,
+                                                    offHoursApplied = false,
+                                                    offHoursCharge = 0.0,
+                                                    holidayApplied = false,
+                                                    holidayCharge = 0.0,
+                                                    rainApplied = false,
+                                                    rainCharge = 0.0,
+                                                    manualExtraAdjustment = 0.0,
+                                                    rawTotal = config.minimumFare + 22.0,
+                                                    finalRoundedTotal = config.minimumFare + 22.0,
+                                                    roundingDifference = 0.0
+                                                )
+                                                if (selectedTemplateTab == 0) {
+                                                    ReceiptImageGenerator.generateCustomerReceiptBitmap(
+                                                        config = config,
+                                                        destination = sampleDest,
+                                                        quote = sampleQuote,
+                                                        customerNote = "María Fernanda Pérez",
+                                                        customerPhone = "8899-1122",
+                                                        orderComments = "Portón negro, llamar al llegar",
+                                                        approximateDeliveryTime = "En 30 min (~03:00 PM)",
+                                                        courier = null,
+                                                        paymentMethod = PaymentMethodType.CASH,
+                                                        transferBank = TransferBankType.BAC,
+                                                        productAmount = 450.0,
+                                                        orderStatus = OrderStatus.EN_RUTA
+                                                    )
+                                                } else {
+                                                    val sampleCourier = CourierDriver(
+                                                        id = "sample_c",
+                                                        name = "Walter López",
+                                                        initials = "W",
+                                                        plate = "M 123456",
+                                                        phone = "8888-0000"
+                                                    )
+                                                    ReceiptImageGenerator.generateDriverDispatchBitmap(
+                                                        config = config,
+                                                        destination = sampleDest,
+                                                        quote = sampleQuote,
+                                                        customerNote = "María Fernanda Pérez",
+                                                        customerPhone = "8899-1122",
+                                                        orderComments = "Portón negro, llamar al llegar",
+                                                        approximateDeliveryTime = "En 30 min (~03:00 PM)",
+                                                        courier = sampleCourier,
+                                                        paymentMethod = PaymentMethodType.CASH,
+                                                        transferBank = TransferBankType.BAC,
+                                                        productAmount = 450.0,
+                                                        orderStatus = OrderStatus.EN_RUTA
+                                                    )
+                                                }
+                                            }.getOrNull()
+                                        }
+
+                                        Surface(
+                                            color = Color(0xFFF8FAFC),
+                                            shape = RoundedCornerShape(16.dp),
+                                            border = BorderStroke(1.dp, ColorShopSurfaceHigh),
+                                            shadowElevation = 2.dp,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 4.dp)
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(12.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Text(
+                                                    text = if (selectedTemplateTab == 0) "🖼️ Vista Previa: Recibo Digital del Cliente" else "📦 Vista Previa: Hoja de Despacho del Motorizado",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = ColorShopDeepPlum
+                                                )
+                                                if (sampleReceiptBitmap != null) {
+                                                    Image(
+                                                        bitmap = sampleReceiptBitmap.asImageBitmap(),
+                                                        contentDescription = "Previsualización del comprobante en imagen",
+                                                        contentScale = ContentScale.FillWidth,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .clip(RoundedCornerShape(12.dp))
+                                                            .border(1.dp, ColorShopPrimary.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                                                    )
+                                                } else {
+                                                    Text("Generando previsualización...", fontSize = 11.sp, color = ColorShopMutedPlum)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
 
                             // Editor de texto (OutlinedTextField) con TextFieldValue para conservar el cursor
@@ -1938,118 +2095,7 @@ fun SettingsScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(110.dp))
-        }
-    }
-
-    // Barra Flotante Sticky de Guardado Accesible
-    AnimatedVisibility(
-        visible = hasUnsavedChanges || scrollState.value > 150,
-        enter = fadeIn() + slideInVertically { it },
-        exit = fadeOut() + slideOutVertically { it },
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp)
-    ) {
-        Surface(
-            color = Color.White.copy(alpha = 0.97f),
-            shape = RoundedCornerShape(22.dp),
-            shadowElevation = 8.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(
-                    width = 1.dp,
-                    color = if (hasUnsavedChanges) ColorShopPrimary.copy(alpha = 0.5f) else ColorShopSurfaceHigh,
-                    shape = RoundedCornerShape(22.dp)
-                )
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(
-                                if (hasUnsavedChanges) Color(0xFFFEF3C7) else ColorShopSurfaceLow
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (hasUnsavedChanges) "⚠️" else "💾",
-                            fontSize = 16.sp
-                        )
-                    }
-                    Column {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = if (hasUnsavedChanges) "Cambios pendientes" else "Configuración",
-                                fontSize = 13.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (hasUnsavedChanges) Color(0xFFB45309) else ColorShopDeepPlum
-                            )
-                            if (hasUnsavedChanges) {
-                                Surface(
-                                    color = Color(0xFFFDE68A),
-                                    shape = RoundedCornerShape(50)
-                                ) {
-                                    Text(
-                                        text = "POR GUARDAR",
-                                        fontSize = 8.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = Color(0xFF92400E),
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-                        Text(
-                            text = if (hasUnsavedChanges) "Pulsa para aplicar tarifas" else "Listo para guardar",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = ColorShopMutedPlum
-                        )
-                    }
-                }
-
-                Button(
-                    onClick = {
-                        val updated = buildCurrentConfig()
-                        onSaveConfig(updated)
-                        Toast.makeText(context, "Configuración guardada correctamente", Toast.LENGTH_SHORT).show()
-                    },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (hasUnsavedChanges) ColorShopPrimary else ColorShopDeepPlum
-                    ),
-                    modifier = Modifier.height(42.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "Guardar",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+            Spacer(modifier = Modifier.height(28.dp))
         }
     }
 }

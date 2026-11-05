@@ -11,6 +11,12 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -31,6 +37,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -86,9 +93,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -98,9 +107,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rapiflete.delivery.R
@@ -111,6 +123,7 @@ import com.rapiflete.delivery.model.PaymentMethodType
 import com.rapiflete.delivery.model.ShareOutputFormat
 import com.rapiflete.delivery.model.SpecialZoneRule
 import com.rapiflete.delivery.model.TransferBankType
+import com.rapiflete.delivery.ui.components.ColorShopButterflyLogo
 import com.rapiflete.delivery.ui.components.ColorShopTopBar
 import com.rapiflete.delivery.ui.components.DeliveryOsmMapView
 import com.rapiflete.delivery.ui.theme.ColorShopDeepPlum
@@ -171,13 +184,14 @@ fun CalculatorScreen(
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
-    val scrollState = rememberScrollState()
 
     var showAjustesBottomSheet by remember { mutableStateOf(false) }
     var showEditPriceDialog by remember { mutableStateOf(false) }
     var showDuplicateConfirmDialog by remember { mutableStateOf(false) }
     var zoomTrigger by remember { mutableIntStateOf(0) }
     var resetNorthTrigger by remember { mutableIntStateOf(0) }
+    var isTopSearchActive by rememberSaveable { mutableStateOf(false) }
+    var isSheetExpanded by rememberSaveable { mutableStateOf(false) }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -194,6 +208,17 @@ fun CalculatorScreen(
     val quote = uiState.quoteBreakdown
     val dest = uiState.frozenDestination
     val cur = cfg.currencySymbol
+
+    val grandTotal = if (quote != null) {
+        if (uiState.productAmount > 0.0) {
+            uiState.productAmount + quote.effectiveTotal
+        } else {
+            quote.effectiveTotal
+        }
+    } else {
+        0.0
+    }
+    val grandTotalFormatted = String.format(Locale.US, "%s %.2f", cur, grandTotal)
 
     val executeDispatch: (Boolean) -> Unit = { saveToHistory ->
         if (quote != null && dest != null) {
@@ -249,229 +274,11 @@ fun CalculatorScreen(
             .fillMaxSize()
             .background(ColorShopSurface)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .imePadding()
-                .verticalScroll(scrollState)
-        ) {
-        // 1. Barra Superior Oficial de ColorShop Delivery
-        ColorShopTopBar(
-            showQuickSearchButton = false
-        )
-
-        // Barra de búsqueda y pegado de ubicación siempre visible
-        Surface(
-            color = Color.White,
-            shadowElevation = 4.dp,
-            shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Surface(
-                            color = ColorShopPrimary.copy(alpha = 0.12f),
-                            shape = RoundedCornerShape(50)
-                        ) {
-                            Text(
-                                text = "📍 Managua",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = ColorShopPrimary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
-                            )
-                        }
-                        Text(
-                            text = "Buscar dirección o pegar enlace de WhatsApp/Maps",
-                            fontSize = 11.sp,
-                            color = ColorShopMutedPlum,
-                            maxLines = 1
-                        )
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = uiState.inputLinkOrText,
-                        onValueChange = onInputChanged,
-                        placeholder = {
-                            Text(
-                                "Barrio, calle, Plus Code o enlace...",
-                                fontSize = 12.sp,
-                                maxLines = 1
-                            )
-                        },
-                        singleLine = true,
-                        shape = RoundedCornerShape(50),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(
-                            onSearch = {
-                                if (uiState.inputLinkOrText.isNotBlank()) {
-                                    onFreezeInputLocation(uiState.inputLinkOrText)
-                                }
-                            }
-                        ),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = ColorShopPrimary,
-                            unfocusedBorderColor = ColorShopSurfaceHigh,
-                            focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f),
-                            unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.35f)
-                        ),
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = null,
-                                tint = ColorShopPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        },
-                        trailingIcon = {
-                            if (uiState.isLoadingRouteOrLink) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(18.dp),
-                                    strokeWidth = 2.dp,
-                                    color = ColorShopPrimary
-                                )
-                            } else if (uiState.inputLinkOrText.isNotBlank()) {
-                                IconButton(
-                                    onClick = { onInputChanged("") },
-                                    modifier = Modifier.size(24.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Close,
-                                        contentDescription = "Limpiar",
-                                        tint = ColorShopMutedPlum,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
-
-                    Button(
-                        onClick = {
-                            if (uiState.inputLinkOrText.isNotBlank()) {
-                                onFreezeInputLocation(uiState.inputLinkOrText)
-                            }
-                        },
-                        enabled = uiState.inputLinkOrText.isNotBlank(),
-                        shape = RoundedCornerShape(50),
-                        colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
-                        modifier = Modifier.height(44.dp)
-                    ) {
-                        Text("Buscar", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-                            val clipData = clipboard?.primaryClip
-                            val clipText = if (clipData != null && clipData.itemCount > 0) {
-                                clipData.getItemAt(0)?.text?.toString()?.trim()
-                            } else null
-
-                            if (!clipText.isNullOrBlank()) {
-                                onInputChanged(clipText)
-                                onFreezeInputLocation(clipText)
-                                Toast.makeText(context, "📋 Ubicación pegada del portapapeles", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "El portapapeles no tiene texto o enlace copiado", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        shape = RoundedCornerShape(50),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = ColorShopPinkPill,
-                            contentColor = ColorShopPrimary
-                        ),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
-                        modifier = Modifier
-                            .height(44.dp)
-                            .border(1.dp, ColorShopPrimary.copy(alpha = 0.3f), RoundedCornerShape(50))
-                    ) {
-                        Text("📋 Pegar", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
-                }
-            }
-        }
-
-        // Banner de error claro y visible cuando uiState.errorMessage != null
-        if (uiState.errorMessage != null) {
-            Surface(
-                color = Color(0xFFFFEBEE),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.dp, Color(0xFFEF9A9A)),
-                shadowElevation = 2.dp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text("⚠️", fontSize = 18.sp)
-                        Text(
-                            text = uiState.errorMessage ?: "",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFFC62828),
-                            lineHeight = 16.sp
-                        )
-                    }
-                    IconButton(
-                        onClick = onDismissErrorMessage,
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Cerrar advertencia",
-                            tint = Color(0xFFC62828),
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
-            }
-        }
-
-        // 2. Lienzo del Mapa Interactivo (con rotación habilitada a 2 dedos) y Controles Flotantes
+        // 1. Lienzo del Mapa Interactivo (DeliveryOsmMapView) ocupando la pantalla completa
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .height(260.dp)
-                .shadow(
-                    elevation = 10.dp,
-                    shape = RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp),
-                    ambientColor = ColorShopPrimary.copy(alpha = 0.25f)
-                )
-                .clip(RoundedCornerShape(bottomStart = 32.dp, bottomEnd = 32.dp))
+                .fillMaxSize()
+                .padding(top = 64.dp)
         ) {
             DeliveryOsmMapView(
                 storeCoord = uiState.config.storeCoordinate,
@@ -522,16 +329,14 @@ fun CalculatorScreen(
                 }
             }
 
-            // Controles derechos del mapa (Pill vertical + / - / Norte y Botón "Ajustes" magenta de Stitch)
+            // Controles flotantes derechos del mapa (Pill zoom/norte y Botón "Ajustes")
             Column(
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .padding(end = 14.dp, top = 8.dp, bottom = 8.dp)
-                    .fillMaxHeight(),
-                verticalArrangement = Arrangement.SpaceBetween,
+                    .align(Alignment.TopEnd)
+                    .padding(end = 14.dp, top = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.End
             ) {
-                // Pill vertical Zoom + / - y Enderezar Norte
                 Surface(
                     color = Color.White.copy(alpha = 0.95f),
                     shape = RoundedCornerShape(50),
@@ -586,12 +391,6 @@ fun CalculatorScreen(
                     }
                 }
 
-                // Botón flotante: Ajustes Rápidos
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    horizontalAlignment = Alignment.End
-                ) {
-                    // Botón flotante "Ajustes" (Opciones y recargos de tarifa)
                     Surface(
                         color = ColorShopPrimary,
                         shape = RoundedCornerShape(50),
@@ -620,38 +419,328 @@ fun CalculatorScreen(
                             )
                         }
                     }
+            }
+        }
+
+        // 2. Barra Superior Unificada con Búsqueda In-Place y Banner de Error
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxWidth()
+                .zIndex(2f)
+        ) {
+        // 1. Barra Superior Unificada con Búsqueda In-Place (Logo ColorShop ↔ Buscador)
+        Surface(
+            color = Color.White,
+            shadowElevation = 3.dp,
+            shape = RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            AnimatedContent(
+                targetState = isTopSearchActive,
+                transitionSpec = {
+                    fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(150))
+                },
+                label = "TopBarSearchTransition"
+            ) { searching ->
+                if (!searching) {
+                    // Modo Normal: Logo mariposa + "ColorShop Delivery" a la izquierda, botón 🔍 a la derecha
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(60.dp)
+                            .padding(horizontal = 16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ColorShopButterflyLogo(size = 32.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = buildAnnotatedString {
+                                    withStyle(
+                                        SpanStyle(
+                                            color = ColorShopDeepPlum,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    ) {
+                                        append("ColorShop ")
+                                    }
+                                    withStyle(
+                                        SpanStyle(
+                                            color = ColorShopPrimary,
+                                            fontWeight = FontWeight.ExtraBold
+                                        )
+                                    ) {
+                                        append("Delivery")
+                                    }
+                                },
+                                fontSize = 19.sp
+                            )
+                        }
+
+                        // Botón de búsqueda a la derecha que activa el buscador in-place
+                        IconButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isTopSearchActive = true
+                            },
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .background(ColorShopSurfaceLow)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Buscar o pegar dirección",
+                                tint = ColorShopPrimary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+                } else {
+                    // Modo Búsqueda Activo: Reemplaza las letras por el buscador en el mismo espacio
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(64.dp)
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        // Botón cerrar/volver
+                        IconButton(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                isTopSearchActive = false
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Cerrar buscador",
+                                tint = ColorShopDeepPlum,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // Campo de texto de búsqueda
+                        OutlinedTextField(
+                            value = uiState.inputLinkOrText,
+                            onValueChange = onInputChanged,
+                            placeholder = {
+                                Text(
+                                    "Barrio, calle, Plus o enlace...",
+                                    fontSize = 12.sp,
+                                    maxLines = 1
+                                )
+                            },
+                            singleLine = true,
+                            shape = RoundedCornerShape(50),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(
+                                onSearch = {
+                                    if (uiState.inputLinkOrText.isNotBlank()) {
+                                        onFreezeInputLocation(uiState.inputLinkOrText)
+                                        isTopSearchActive = false
+                                    }
+                                }
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = ColorShopPrimary,
+                                unfocusedBorderColor = ColorShopSurfaceHigh,
+                                focusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.5f),
+                                unfocusedContainerColor = ColorShopSurfaceLow.copy(alpha = 0.5f)
+                            ),
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = null,
+                                    tint = ColorShopPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            },
+                            trailingIcon = {
+                                if (uiState.isLoadingRouteOrLink) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        strokeWidth = 2.dp,
+                                        color = ColorShopPrimary
+                                    )
+                                } else if (uiState.inputLinkOrText.isNotBlank()) {
+                                    IconButton(
+                                        onClick = { onInputChanged("") },
+                                        modifier = Modifier.size(20.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Limpiar texto",
+                                            tint = ColorShopMutedPlum,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        // Botón Buscar
+                        Button(
+                            onClick = {
+                                if (uiState.inputLinkOrText.isNotBlank()) {
+                                    onFreezeInputLocation(uiState.inputLinkOrText)
+                                    isTopSearchActive = false
+                                }
+                            },
+                            enabled = uiState.inputLinkOrText.isNotBlank(),
+                            shape = RoundedCornerShape(50),
+                            colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary),
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
+                            modifier = Modifier.height(40.dp)
+                        ) {
+                            Text("Buscar", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        // Botón Pegar
+                        Button(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                                val clipData = clipboard?.primaryClip
+                                val clipText = if (clipData != null && clipData.itemCount > 0) {
+                                    clipData.getItemAt(0)?.text?.toString()?.trim()
+                                } else null
+
+                                if (!clipText.isNullOrBlank()) {
+                                    onInputChanged(clipText)
+                                    onFreezeInputLocation(clipText)
+                                    isTopSearchActive = false
+                                    Toast.makeText(context, "📋 Ubicación pegada del portapapeles", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "El portapapeles no tiene texto o enlace copiado", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            shape = RoundedCornerShape(50),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ColorShopPinkPill,
+                                contentColor = ColorShopPrimary
+                            ),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                            modifier = Modifier
+                                .height(40.dp)
+                                .border(1.dp, ColorShopPrimary.copy(alpha = 0.3f), RoundedCornerShape(50))
+                        ) {
+                            Text("📋 Pegar", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }
 
-        // 3. Tarjeta Flotante Inferior de Cotización, Datos del Cliente/Respaldo y Despacho
-        val quote = uiState.quoteBreakdown
-        val dest = uiState.frozenDestination
-        val cfg = uiState.config
-        val cur = cfg.currencySymbol
+        // Banner de error claro y visible cuando uiState.errorMessage != null
+        if (uiState.errorMessage != null) {
+            Surface(
+                color = Color(0xFFFFEBEE),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.dp, Color(0xFFEF9A9A)),
+                shadowElevation = 2.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("⚠️", fontSize = 18.sp)
+                        Text(
+                            text = uiState.errorMessage ?: "",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFC62828),
+                            lineHeight = 16.sp
+                        )
+                    }
+                    IconButton(
+                        onClick = onDismissErrorMessage,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cerrar advertencia",
+                            tint = Color(0xFFC62828),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+        }
+        }
 
+        // 3. Panel Unificado de Cotización y Dock de Acciones (Bottom Sheet Integrado)
         Surface(
             color = Color.White,
-            shape = RoundedCornerShape(28.dp),
-            shadowElevation = 12.dp,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            shadowElevation = 16.dp,
+            border = BorderStroke(1.dp, ColorShopSurfaceHigh.copy(alpha = 0.8f)),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp)
+                .align(Alignment.BottomCenter)
+                .animateContentSize()
+                .imePadding()
+                .zIndex(3f)
         ) {
             Column(
-                modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // Indicador superior tipo handle
-                Box(
+                // 1. Pestañita desplegable tipo Handle
+                Column(
                     modifier = Modifier
-                        .width(40.dp)
-                        .height(4.dp)
-                        .clip(RoundedCornerShape(50))
-                        .background(ColorShopSurfaceHigh)
-                        .align(Alignment.CenterHorizontally)
-                )
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            isSheetExpanded = !isSheetExpanded
+                        }
+                        .padding(vertical = 4.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .width(44.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(ColorShopPrimary.copy(alpha = 0.35f))
+                    )
+                    Text(
+                        text = if (isSheetExpanded) "▼ Ocultar opciones de cotización" else "▲ Ver opciones de cotización y cliente",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ColorShopPrimary
+                    )
+                }
 
+                // 2. Contenido desplegable (Cotización, Desglose, Cliente, Cobro, Formato)
+                if (isSheetExpanded) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 460.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
                 // Fila de encabezado: Título "Cotización" y Botón "Nueva Cotización"
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1473,87 +1562,78 @@ fun CalculatorScreen(
                         }
                     }
                 }
-            }
-        }
+                        Spacer(modifier = Modifier.height(10.dp))
+                    }
+                    HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.7f))
+                }
 
-        // Espaciador para evitar que el contenido final quede oculto tras el Dock Inferior
-        Spacer(modifier = Modifier.height(160.dp))
-    }
-
-    // 4. Sticky Bottom Action Dock (Ergonomía a una mano / Thumb Zone)
-    val grandTotal = if (quote != null) {
-        if (uiState.productAmount > 0.0) {
-            uiState.productAmount + quote.effectiveTotal
-        } else {
-            quote.effectiveTotal
-        }
-    } else {
-        0.0
-    }
-    val grandTotalFormatted = String.format(Locale.US, "%s %.2f", cur, grandTotal)
-
-    Surface(
-        color = Color.White,
-        shadowElevation = 16.dp,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        border = BorderStroke(1.dp, ColorShopSurfaceHigh.copy(alpha = 0.8f)),
-        modifier = Modifier
-            .fillMaxWidth()
-            .align(Alignment.BottomCenter)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            // Fila Superior del Dock: Gran Total
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable(enabled = quote != null) {
-                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            showEditPriceDialog = true
-                        }
+                // 3. Fila del Total a Pagar (SIEMPRE VISIBLE)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = when {
-                            quote == null -> "TOTAL A PAGAR"
-                            uiState.productAmount > 0.0 -> "GRAN TOTAL (ENVÍO + PRODUCTOS)"
-                            quote.customTotalOverride != null -> "TARIFA TOTAL ACORDADA"
-                            else -> "TARIFA DE ENVÍO"
-                        },
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color(0xFF893B92),
-                        letterSpacing = 0.6.sp
-                    )
-                    Row(
-                        verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    Column(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable(enabled = quote != null) {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                showEditPriceDialog = true
+                            }
                     ) {
                         Text(
-                            text = grandTotalFormatted,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = ColorShopPrimary,
-                            letterSpacing = (-0.5).sp
+                            text = when {
+                                quote == null -> "TOTAL A PAGAR"
+                                uiState.productAmount > 0.0 -> "GRAN TOTAL (ENVÍO + PRODUCTOS)"
+                                quote.customTotalOverride != null -> "TARIFA TOTAL ACORDADA"
+                                else -> "TARIFA DE ENVÍO"
+                            },
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF893B92),
+                            letterSpacing = 0.6.sp
                         )
-                        Text(
-                            text = if (quote != null && quote.customTotalOverride != null) "acordado" else "neto",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = ColorShopMutedPlum,
-                            modifier = Modifier.padding(bottom = 3.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = grandTotalFormatted,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopPrimary,
+                                letterSpacing = (-0.5).sp
+                            )
+                            Text(
+                                text = if (quote != null && quote.customTotalOverride != null) "acordado" else "neto",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = ColorShopMutedPlum,
+                                modifier = Modifier.padding(bottom = 3.dp)
+                            )
+                        }
+                    }
+
+                    if (quote != null && dest != null) {
+                        Surface(
+                            color = ColorShopPinkPill,
+                            shape = RoundedCornerShape(50)
+                        ) {
+                            Text(
+                                text = String.format(
+                                    Locale.US,
+                                    "%.1f km • ~%d min",
+                                    quote.effectiveDistanceKm,
+                                    (quote.durationMinutes?.roundToInt() ?: 14).coerceAtLeast(1)
+                                ),
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopPrimary,
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                            )
+                        }
                     }
                 }
-            }
 
             // Fila Inferior del Dock: Botones Gemelos de Acción Rápida (Cotizar | Despachar)
             Row(
@@ -1674,9 +1754,9 @@ fun CalculatorScreen(
                     )
                 }
             }
+            }
         }
     }
-}
 
     // Diálogo de confirmación para evitar duplicar registros en historial
     if (showDuplicateConfirmDialog) {
