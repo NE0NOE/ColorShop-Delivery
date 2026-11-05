@@ -34,13 +34,14 @@ jobs:
       - name: Prepare APKs
         run: |
           mkdir -p release-output
-          cp app/build/outputs/apk/release/app-release.apk release-output/ColorShop-Delivery-v1.6.1.apk
+          TAG_OR_VER="${GITHUB_REF_NAME:-v1.6.2}"
+          cp app/build/outputs/apk/release/app-release.apk "release-output/ColorShop-Delivery-${TAG_OR_VER}.apk"
           cp app/build/outputs/apk/release/app-release.apk release-output/app-release.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ColorShop-Delivery-v1.6.1-apk
+          name: ColorShop-Delivery-${{ github.ref_name || 'v1.6.2' }}-apk
           path: release-output/*.apk
           retention-days: 30
 
