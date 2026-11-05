@@ -171,10 +171,10 @@ fun SettingsScreen(
     var showLivePreview by rememberSaveable { mutableStateOf(false) }
     var previewFormatMode by rememberSaveable { mutableIntStateOf(0) } // 0 = Texto WhatsApp, 1 = Recibo en Imagen
     var selectedTemplateTab by remember { mutableIntStateOf(0) } // 0 = Cliente, 1 = Motorizado
-    var customerTemplateValue by remember(currentConfig) {
+    var customerTemplateValue by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(currentConfig.customerMessageTemplate))
     }
-    var driverTemplateValue by remember(currentConfig) {
+    var driverTemplateValue by rememberSaveable(stateSaver = TextFieldValue.Saver) {
         mutableStateOf(TextFieldValue(currentConfig.driverDispatchTemplate))
     }
 
@@ -213,7 +213,7 @@ fun SettingsScreen(
 
     DisposableEffect(Unit) {
         onDispose {
-            onUpdateConfig(buildCurrentConfig())
+            onSaveConfig(buildCurrentConfig())
         }
     }
 
@@ -243,7 +243,8 @@ fun SettingsScreen(
                 "repartidor" to "Walter Martínez",
                 "telefono_repartidor" to "+505 7777-4321",
                 "horarios_atencion" to "Lun - Vie: $weekdayOpen - $weekdayClose | Sáb: $satOpen - $satClose",
-                "nombre_tienda" to storeName.ifBlank { "ColorShop Nicaragua" }
+                "nombre_tienda" to storeName.ifBlank { "ColorShop Nicaragua" },
+                "codigo_recibo" to "#20261105011"
             )
         } else {
             mapOf(
@@ -264,7 +265,8 @@ fun SettingsScreen(
                 "placa_repartidor" to "M-142857",
                 "vehiculo_repartidor" to "Moto Bajaj Pulsar 150 Roja",
                 "horarios_atencion" to "Lun - Vie: $weekdayOpen - $weekdayClose",
-                "nombre_tienda" to storeName.ifBlank { "ColorShop Nicaragua" }
+                "nombre_tienda" to storeName.ifBlank { "ColorShop Nicaragua" },
+                "codigo_recibo" to "#20261105011"
             )
         }
     }
@@ -1804,7 +1806,12 @@ fun SettingsScreen(
                                         )
                                     } else {
                                         val config = buildCurrentConfig()
-                                        val sampleReceiptBitmap = remember(config, selectedTemplateTab) {
+                                        val sampleReceiptBitmap = remember(
+                                            config,
+                                            selectedTemplateTab,
+                                            customerTemplateValue.text,
+                                            driverTemplateValue.text
+                                        ) {
                                             runCatching {
                                                 val sampleDest = FrozenDestination(
                                                     coordinate = GeoCoordinate(config.storeLat + 0.025, config.storeLng + 0.025),
@@ -1850,7 +1857,9 @@ fun SettingsScreen(
                                                         paymentMethod = PaymentMethodType.CASH,
                                                         transferBank = TransferBankType.BAC,
                                                         productAmount = 450.0,
-                                                        orderStatus = OrderStatus.EN_RUTA
+                                                        orderStatus = OrderStatus.EN_RUTA,
+                                                        customTemplate = customerTemplateValue.text,
+                                                        receiptNumber = "#20261105011"
                                                     )
                                                 } else {
                                                     val sampleCourier = CourierDriver(
@@ -1872,7 +1881,9 @@ fun SettingsScreen(
                                                         paymentMethod = PaymentMethodType.CASH,
                                                         transferBank = TransferBankType.BAC,
                                                         productAmount = 450.0,
-                                                        orderStatus = OrderStatus.EN_RUTA
+                                                        orderStatus = OrderStatus.EN_RUTA,
+                                                        customTemplate = driverTemplateValue.text,
+                                                        dispatchNumber = "#20261105011"
                                                     )
                                                 }
                                             }.getOrNull()
@@ -1971,7 +1982,8 @@ fun SettingsScreen(
                                 "{repartidor}",
                                 "{telefono_repartidor}",
                                 "{horarios_atencion}",
-                                "{nombre_tienda}"
+                                "{nombre_tienda}",
+                                "{codigo_recibo}"
                             )
 
                             val driverTags = listOf(
@@ -1990,7 +2002,8 @@ fun SettingsScreen(
                                 "{liquidacion_motorizado}",
                                 "{repartidor}",
                                 "{placa_repartidor}",
-                                "{vehiculo_repartidor}"
+                                "{vehiculo_repartidor}",
+                                "{codigo_recibo}"
                             )
 
                             val activeTags = if (selectedTemplateTab == 0) customerTags else driverTags

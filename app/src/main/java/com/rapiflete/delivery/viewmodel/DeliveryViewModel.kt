@@ -67,7 +67,26 @@ data class DeliveryUiState(
     val statusBannerMessage: String? = null,
     val errorMessage: String? = null,
     val history: List<SavedQuoteRecord> = emptyList()
-)
+) {
+    /**
+     * Genera el código numérico estructurado del recibo:
+     * [Fecha AAAAMMDD] + [Número de Pedido correlativo 2 dígitos, ej. 01] + [Dígito del Motorizado, ej. 1..9 o 0]
+     * Ejemplo: 20261105011
+     */
+    val currentReceiptCode: String
+        get() {
+            val now = Date()
+            val datePart = SimpleDateFormat("yyyyMMdd", Locale.US).format(now)
+            val todayIso = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
+            val todayCount = history.count { it.dateIso == todayIso }
+            val orderNum = todayCount + 1
+            val courierIdx = if (selectedCourier != null) {
+                val found = couriers.indexOfFirst { it.id == selectedCourier.id }
+                if (found >= 0) (found + 1).coerceAtMost(9) else 1
+            } else 0
+            return "$datePart${String.format(Locale.US, "%02d", orderNum)}$courierIdx"
+        }
+}
 
 class DeliveryViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -590,7 +609,7 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
                 PaymentMethodType.TRANSFER -> "Transf. ${state.selectedTransferBank.displayName} (${state.config.currencySymbol} ${totalAmount.toInt()})"
                 PaymentMethodType.POS -> "POS Tarjeta (${state.config.currencySymbol} ${totalAmount.toInt()})"
             },
-            receiptId = "#CS-${(10000..99999).random()}",
+            receiptId = "#${state.currentReceiptCode}",
             destinationLat = dest.coordinate.latitude,
             destinationLng = dest.coordinate.longitude,
             destinationLabel = dest.label,

@@ -361,7 +361,8 @@ object RoutingAndFareCalculator {
         paymentMethod: PaymentMethodType? = null,
         transferBank: TransferBankType = TransferBankType.BAC,
         productAmount: Double = 0.0,
-        isPaymentPendingOnDelivery: Boolean = false
+        isPaymentPendingOnDelivery: Boolean = false,
+        receiptCode: String = ""
     ): String {
         if (config.customerMessageTemplate.isNotBlank()) {
             val cur = config.currencySymbol
@@ -468,7 +469,8 @@ object RoutingAndFareCalculator {
                 "repartidor" to courierName,
                 "telefono_repartidor" to courierPhone,
                 "horarios_atencion" to buildScheduleSummaryLine(config),
-                "nombre_tienda" to config.storeName
+                "nombre_tienda" to config.storeName,
+                "codigo_recibo" to receiptCode.trim()
             )
 
             return resolveTemplate(config.customerMessageTemplate, variables)
@@ -631,7 +633,8 @@ object RoutingAndFareCalculator {
         paymentMethod: PaymentMethodType = PaymentMethodType.CASH,
         transferBank: TransferBankType = TransferBankType.BAC,
         courier: CourierDriver? = null,
-        isPaymentPendingOnDelivery: Boolean = false
+        isPaymentPendingOnDelivery: Boolean = false,
+        receiptCode: String = ""
     ): String {
         if (config.driverDispatchTemplate.isNotBlank()) {
             val cur = config.currencySymbol
@@ -721,7 +724,8 @@ object RoutingAndFareCalculator {
                 "liquidacion_motorizado" to settlementText,
                 "repartidor" to (courier?.name ?: ""),
                 "placa_repartidor" to (courier?.plate ?: ""),
-                "vehiculo_repartidor" to (courier?.let { "${it.vehicleType} ${it.vehicleModel}".trim() } ?: "")
+                "vehiculo_repartidor" to (courier?.let { "${it.vehicleType} ${it.vehicleModel}".trim() } ?: ""),
+                "codigo_recibo" to receiptCode.trim()
             )
 
             return resolveTemplate(config.driverDispatchTemplate, variables)

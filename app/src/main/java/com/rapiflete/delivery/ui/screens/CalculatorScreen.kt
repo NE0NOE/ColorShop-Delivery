@@ -222,6 +222,7 @@ fun CalculatorScreen(
 
     val executeDispatch: (Boolean) -> Unit = { saveToHistory ->
         if (quote != null && dest != null) {
+            val receiptCode = "#${uiState.currentReceiptCode}"
             if (saveToHistory) {
                 onSaveToHistory()
                 Toast.makeText(context, "✅ Pedido guardado en historial (En Ruta)", Toast.LENGTH_SHORT).show()
@@ -238,7 +239,8 @@ fun CalculatorScreen(
                 paymentMethod = uiState.selectedPaymentMethod,
                 transferBank = uiState.selectedTransferBank,
                 courier = uiState.selectedCourier,
-                isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery
+                isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery,
+                receiptCode = receiptCode
             )
             copyToClipboard(context, "Despacho ColorShop", dispatchText)
             if (cfg.defaultShareFormat == ShareOutputFormat.IMAGE_RECEIPT) {
@@ -255,7 +257,9 @@ fun CalculatorScreen(
                     transferBank = uiState.selectedTransferBank,
                     productAmount = uiState.productAmount,
                     orderStatus = OrderStatus.EN_RUTA,
-                    isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery
+                    isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery,
+                    customTemplate = cfg.driverDispatchTemplate,
+                    dispatchNumber = receiptCode
                 )
                 val imageUri = ReceiptImageGenerator.saveBitmapToShareCache(
                     context,
@@ -1647,6 +1651,7 @@ fun CalculatorScreen(
                     onClick = {
                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                         if (quote != null && dest != null) {
+                            val receiptCode = "#${uiState.currentReceiptCode}"
                             val summary = RoutingAndFareCalculator.buildCustomerWhatsAppSummary(
                                 config = cfg,
                                 destination = dest,
@@ -1659,7 +1664,8 @@ fun CalculatorScreen(
                                 paymentMethod = uiState.selectedPaymentMethod,
                                 transferBank = uiState.selectedTransferBank,
                                 productAmount = uiState.productAmount,
-                                isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery
+                                isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery,
+                                receiptCode = receiptCode
                             )
                             copyToClipboard(context, "Cotización ColorShop", summary)
                             if (cfg.defaultShareFormat == ShareOutputFormat.IMAGE_RECEIPT) {
@@ -1676,7 +1682,9 @@ fun CalculatorScreen(
                                     transferBank = uiState.selectedTransferBank,
                                     productAmount = uiState.productAmount,
                                     orderStatus = OrderStatus.EN_RUTA,
-                                    isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery
+                                    isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery,
+                                    customTemplate = cfg.customerMessageTemplate,
+                                    receiptNumber = receiptCode
                                 )
                                 val imageUri = ReceiptImageGenerator.saveBitmapToShareCache(
                                     context,
