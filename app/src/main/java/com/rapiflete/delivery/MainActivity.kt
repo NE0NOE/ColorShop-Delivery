@@ -148,7 +148,10 @@ class MainActivity : ComponentActivity() {
                                             onOpenSettings = { currentTab = 2 },
                                             onApplyPreferentialRate = viewModel::applyPreferentialRate,
                                             onDismissPreferentialDialog = viewModel::dismissPreferentialRateDialog,
-                                            onOpenPreferentialDialog = viewModel::openPreferentialRateDialog
+                                            onOpenPreferentialDialog = viewModel::openPreferentialRateDialog,
+                                            onConfirmSuggestedZone = viewModel::confirmSuggestedZone,
+                                            onDismissZoneConfirmDialog = viewModel::dismissZoneConfirmDialog,
+                                            onOpenZoneConfirmDialog = viewModel::openZoneConfirmDialog
                                         )
                                         1 -> HistoryScreen(
                                             records = uiState.history,
@@ -177,6 +180,7 @@ class MainActivity : ComponentActivity() {
                                             },
                                             onOpenCouriers = { currentTab = 3 },
                                             onAddSpecialZone = viewModel::addSpecialZone,
+                                            onUpdateSpecialZone = viewModel::updateSpecialZone,
                                             onDeleteSpecialZone = viewModel::deleteSpecialZone,
                                             onApplyManualSurchargeAmount = { amount ->
                                                 viewModel.setManualExtraValue(amount)

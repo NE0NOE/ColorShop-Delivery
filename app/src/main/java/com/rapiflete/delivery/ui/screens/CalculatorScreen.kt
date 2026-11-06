@@ -118,6 +118,7 @@ import androidx.compose.ui.unit.sp
 import com.rapiflete.delivery.R
 import com.rapiflete.delivery.model.CourierDriver
 import com.rapiflete.delivery.model.DistanceCalculationMode
+import com.rapiflete.delivery.model.GeoCoordinate
 import com.rapiflete.delivery.model.OrderStatus
 import com.rapiflete.delivery.model.PaymentMethodType
 import com.rapiflete.delivery.model.ShareOutputFormat
@@ -180,7 +181,10 @@ fun CalculatorScreen(
     onOpenSettings: () -> Unit,
     onApplyPreferentialRate: (Double?) -> Unit = {},
     onDismissPreferentialDialog: () -> Unit = {},
-    onOpenPreferentialDialog: () -> Unit = {}
+    onOpenPreferentialDialog: () -> Unit = {},
+    onConfirmSuggestedZone: () -> Unit = {},
+    onDismissZoneConfirmDialog: () -> Unit = {},
+    onOpenZoneConfirmDialog: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
@@ -290,6 +294,7 @@ fun CalculatorScreen(
                 destination = uiState.frozenDestination,
                 routePoints = uiState.routeResult?.routeGeometry ?: emptyList(),
                 calculationMode = uiState.selectedCalculationMode,
+                activeZone = uiState.selectedZone ?: uiState.suggestedZone,
                 zoomDeltaTrigger = zoomTrigger,
                 resetNorthTrigger = resetNorthTrigger,
                 onMapTap = onMapTapLocation,
@@ -805,12 +810,16 @@ fun CalculatorScreen(
                         quote.rainCharge +
                         quote.manualExtraAdjustment
 
-                    val breakdownSubtext = when {
+                        val breakdownSubtext = when {
                         quote.customTotalOverride != null -> {
                             "Estimado: $cur ${quote.finalRoundedTotal.toInt()} (Editado)"
                         }
                         quote.selectedZoneName != null -> {
-                            "Zona ${quote.selectedZoneName}: $cur${quote.baseMinimumFare.toInt()}"
+                            if (quote.extraDistanceCharge > 0.01) {
+                                "Zona ${quote.selectedZoneName}: $cur${quote.baseMinimumFare.toInt()} + $cur${quote.extraDistanceCharge.roundToInt()} km extra"
+                            } else {
+                                "Zona ${quote.selectedZoneName}: $cur${quote.baseMinimumFare.toInt()} (en radio)"
+                            }
                         }
                         else -> {
                             "Mín. $cur${quote.baseMinimumFare.toInt()} + $cur${extraChargesSum.roundToInt()} dist."
@@ -915,6 +924,70 @@ fun CalculatorScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color(0xFF893B92)
                             )
+                        }
+                    }
+
+                    // Banner de sugerencia de Zona Aledaña si se detectó una y aún no ha sido activada
+                    if (uiState.suggestedZone != null && uiState.selectedZone == null) {
+                        val sZone = uiState.suggestedZone
+                        val distFromZoneCenter = RoutingAndFareCalculator.calculateHaversineKm(
+                            GeoCoordinate(sZone.centerLat, sZone.centerLng),
+                            dest.coordinate
+                        )
+                        val extraOutRadius = kotlin.math.max(0.0, distFromZoneCenter - sZone.radiusKm)
+                        val extraZoneCost = if (sZone.appliesExtraKm) extraOutRadius * sZone.extraKmPrice else 0.0
+                        val previewZoneTotal = RoutingAndFareCalculator.applyRounding(
+                            sZone.basePrice + extraZoneCost,
+                            uiState.config.roundingMode
+                        )
+
+                        Surface(
+                            color = ColorShopSurfaceLow.copy(alpha = 0.7f),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, ColorShopPrimary.copy(alpha = 0.45f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(14.dp))
+                                .clickable { onOpenZoneConfirmDialog() }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("📍", fontSize = 16.sp)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "Zona detectada: ${sZone.name}",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = ColorShopDeepPlum
+                                    )
+                                    val subInfo = if (extraOutRadius > 0.05 && sZone.appliesExtraKm) {
+                                        "Base $cur${sZone.basePrice.toInt()} + ${String.format(Locale.US, "%.1f", extraOutRadius)} km fuera del círculo → $cur${previewZoneTotal.toInt()}"
+                                    } else {
+                                        "Dentro del círculo (${String.format(Locale.US, "%.1f", sZone.radiusKm)} km) → Tarifa: $cur${previewZoneTotal.toInt()}"
+                                    }
+                                    Text(
+                                        text = subInfo,
+                                        fontSize = 11.sp,
+                                        color = ColorShopMutedPlum
+                                    )
+                                }
+                                Surface(
+                                    color = ColorShopPrimary,
+                                    shape = RoundedCornerShape(50),
+                                    modifier = Modifier.clickable { onConfirmSuggestedZone() }
+                                ) {
+                                    Text(
+                                        text = "Aplicar",
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
                         }
                     }
 
@@ -2111,6 +2184,148 @@ fun CalculatorScreen(
             dismissButton = {
                 TextButton(onClick = onDismissPreferentialDialog) {
                     Text("Mantener $cur ${calculated.toInt()}", color = ColorShopMutedPlum)
+                }
+            }
+        )
+    }
+
+    // Diálogo de confirmación no agresivo cuando se detecta una Zona Aledaña
+    if (uiState.showZoneConfirmDialog && uiState.suggestedZone != null && uiState.quoteBreakdown != null && uiState.frozenDestination != null) {
+        val sZone = uiState.suggestedZone
+        val currentQuote = uiState.quoteBreakdown
+        val destCoord = uiState.frozenDestination.coordinate
+        val distFromCenter = RoutingAndFareCalculator.calculateHaversineKm(
+            GeoCoordinate(sZone.centerLat, sZone.centerLng),
+            destCoord
+        )
+        val extraOutKm = kotlin.math.max(0.0, distFromCenter - sZone.radiusKm)
+        val extraCharge = if (sZone.appliesExtraKm) extraOutKm * sZone.extraKmPrice else 0.0
+        val zoneTotal = RoutingAndFareCalculator.applyRounding(
+            sZone.basePrice + extraCharge + currentQuote.offHoursCharge + currentQuote.holidayCharge + currentQuote.rainCharge + currentQuote.manualExtraAdjustment,
+            uiState.config.roundingMode
+        )
+
+        AlertDialog(
+            onDismissRequest = onDismissZoneConfirmDialog,
+            containerColor = Color.White,
+            shape = RoundedCornerShape(26.dp),
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(ColorShopSurfaceLow),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(sZone.iconEmoji, fontSize = 18.sp)
+                    }
+                    Column {
+                        Text(
+                            text = "Zona Detectada: ${sZone.name}",
+                            fontWeight = FontWeight.ExtraBold,
+                            color = ColorShopDeepPlum,
+                            fontSize = 17.sp
+                        )
+                        Text(
+                            text = "Confirmación de tarifa de zona",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = ColorShopMutedPlum
+                        )
+                    }
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "El punto de entrega coincide con la zona configurada '${sZone.name}' (Radio base: ${String.format(Locale.US, "%.1f", sZone.radiusKm)} km).",
+                        fontSize = 12.sp,
+                        color = ColorShopDeepPlum,
+                        lineHeight = 17.sp
+                    )
+
+                    Surface(
+                        color = ColorShopSurfaceLow.copy(alpha = 0.55f),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Precio base zona:", fontSize = 11.5.sp, color = ColorShopMutedPlum)
+                                Text("$cur ${sZone.basePrice.toInt()}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ColorShopDeepPlum)
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Distancia al centro de zona:", fontSize = 11.5.sp, color = ColorShopMutedPlum)
+                                Text("${String.format(Locale.US, "%.2f", distFromCenter)} km", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold, color = ColorShopDeepPlum)
+                            }
+                            if (extraOutKm > 0.05 && sZone.appliesExtraKm) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Exceso fuera del círculo (${String.format(Locale.US, "%.2f", extraOutKm)} km):", fontSize = 11.5.sp, color = ColorShopMutedPlum)
+                                    Text("+$cur ${extraCharge.roundToInt()}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ColorShopPrimary)
+                                }
+                            } else {
+                                Text(
+                                    text = "✓ Dentro del radio de cobertura base (${String.format(Locale.US, "%.1f", sZone.radiusKm)} km)",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF2E7D32)
+                                )
+                            }
+                            HorizontalDivider(color = ColorShopSurfaceHigh)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text("Total con tarifa de zona:", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = ColorShopDeepPlum)
+                                Text("$cur ${zoneTotal.toInt()}", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = ColorShopPrimary)
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = "¿Deseas aplicar la tarifa de ${sZone.name} o mantener el cálculo por distancia estándar ($cur ${currentQuote.finalRoundedTotal.toInt()})?",
+                        fontSize = 11.5.sp,
+                        color = ColorShopMutedPlum
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = onConfirmSuggestedZone,
+                    shape = RoundedCornerShape(50),
+                    colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary)
+                ) {
+                    Text(
+                        "Aplicar Zona ($cur ${zoneTotal.toInt()})",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissZoneConfirmDialog) {
+                    Text(
+                        "Usar tarifa estándar ($cur ${currentQuote.finalRoundedTotal.toInt()})",
+                        color = ColorShopMutedPlum,
+                        fontSize = 12.sp
+                    )
                 }
             }
         )

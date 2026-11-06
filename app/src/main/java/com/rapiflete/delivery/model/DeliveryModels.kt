@@ -104,9 +104,13 @@ data class CourierDriver(
 data class SpecialZoneRule(
     val id: String,
     val name: String,
-    val iconEmoji: String = "🏙️",
+    val iconEmoji: String = "📍",
     val basePrice: Double,
-    val appliesExtraKm: Boolean = false
+    val centerLat: Double = 12.1560,
+    val centerLng: Double = -86.3520,
+    val radiusKm: Double = 2.5,
+    val appliesExtraKm: Boolean = true,
+    val extraKmPrice: Double = 10.0
 )
 
 data class CustomSurchargeRule(

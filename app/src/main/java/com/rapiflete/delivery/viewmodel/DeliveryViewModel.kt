@@ -50,6 +50,8 @@ data class DeliveryUiState(
     val manualAdjustment: Double = 0.0,
     val customTotalOverride: Double? = null,
     val selectedZone: SpecialZoneRule? = null,
+    val suggestedZone: SpecialZoneRule? = null,
+    val showZoneConfirmDialog: Boolean = false,
     val isZoneAutoDetected: Boolean = false,
     val selectedPaymentMethod: PaymentMethodType = PaymentMethodType.CASH,
     val selectedTransferBank: TransferBankType = TransferBankType.BAC,
@@ -145,6 +147,9 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
                 isCurrentQuoteSaved = false,
                 isPreferentialApplied = false,
                 showPreferentialRateDialog = false,
+                selectedZone = null,
+                suggestedZone = null,
+                showZoneConfirmDialog = false,
                 isPaymentPendingOnDelivery = false
             )
         }
@@ -267,7 +272,41 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
 
     fun selectSpecialZone(zone: SpecialZoneRule?) {
         _uiState.update { state ->
-            state.copy(selectedZone = zone, isZoneAutoDetected = false, customTotalOverride = null).recalculateQuote()
+            state.copy(
+                selectedZone = zone,
+                suggestedZone = if (zone != null) null else state.suggestedZone,
+                showZoneConfirmDialog = false,
+                isZoneAutoDetected = false,
+                customTotalOverride = null
+            ).recalculateQuote()
+        }
+    }
+
+    fun confirmSuggestedZone() {
+        _uiState.update { state ->
+            val zoneToApply = state.suggestedZone ?: return@update state.copy(showZoneConfirmDialog = false)
+            state.copy(
+                selectedZone = zoneToApply,
+                showZoneConfirmDialog = false,
+                isZoneAutoDetected = true,
+                customTotalOverride = null
+            ).recalculateQuote()
+        }
+    }
+
+    fun dismissZoneConfirmDialog() {
+        _uiState.update { state ->
+            state.copy(showZoneConfirmDialog = false)
+        }
+    }
+
+    fun openZoneConfirmDialog() {
+        _uiState.update { state ->
+            if (state.suggestedZone != null) {
+                state.copy(showZoneConfirmDialog = true)
+            } else {
+                state
+            }
         }
     }
 
@@ -377,7 +416,15 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
         }
     }
 
-    fun addSpecialZone(name: String, basePrice: Double, appliesExtraKm: Boolean) {
+    fun addSpecialZone(
+        name: String,
+        basePrice: Double,
+        centerLat: Double,
+        centerLng: Double,
+        radiusKm: Double,
+        appliesExtraKm: Boolean,
+        extraKmPrice: Double
+    ) {
         val cleanName = name.trim()
         if (cleanName.isBlank()) return
         val newZone = SpecialZoneRule(
@@ -385,11 +432,36 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             name = cleanName,
             iconEmoji = "📍",
             basePrice = basePrice,
-            appliesExtraKm = appliesExtraKm
+            centerLat = centerLat,
+            centerLng = centerLng,
+            radiusKm = radiusKm.coerceAtLeast(0.2),
+            appliesExtraKm = appliesExtraKm,
+            extraKmPrice = extraKmPrice.coerceAtLeast(0.0)
         )
         val updated = _uiState.value.zones + newZone
         repository.saveZones(updated)
-        _uiState.update { it.copy(zones = updated) }
+        _uiState.update { it.copy(zones = updated).recalculateQuote() }
+    }
+
+    fun updateSpecialZone(updatedZone: SpecialZoneRule) {
+        val cleanName = updatedZone.name.trim()
+        if (cleanName.isBlank()) return
+        val normalized = updatedZone.copy(
+            name = cleanName,
+            radiusKm = updatedZone.radiusKm.coerceAtLeast(0.2),
+            extraKmPrice = updatedZone.extraKmPrice.coerceAtLeast(0.0)
+        )
+        val updated = _uiState.value.zones.map { if (it.id == normalized.id) normalized else it }
+        repository.saveZones(updated)
+        _uiState.update { state ->
+            val nextSelected = if (state.selectedZone?.id == normalized.id) normalized else state.selectedZone
+            val nextSuggested = if (state.suggestedZone?.id == normalized.id) normalized else state.suggestedZone
+            state.copy(
+                zones = updated,
+                selectedZone = nextSelected,
+                suggestedZone = nextSuggested
+            ).recalculateQuote()
+        }
     }
 
     fun deleteSpecialZone(id: String) {
@@ -397,7 +469,13 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
         repository.saveZones(updated)
         _uiState.update { state ->
             val nextSelected = if (state.selectedZone?.id == id) null else state.selectedZone
-            state.copy(zones = updated, selectedZone = nextSelected).recalculateQuote()
+            val nextSuggested = if (state.suggestedZone?.id == id) null else state.suggestedZone
+            state.copy(
+                zones = updated,
+                selectedZone = nextSelected,
+                suggestedZone = nextSuggested,
+                showZoneConfirmDialog = if (nextSuggested == null) false else state.showZoneConfirmDialog
+            ).recalculateQuote()
         }
     }
 
@@ -727,7 +805,7 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             straightLineFactor = cfg.straightLineFactor
         )
 
-        // Detección automática de zonas aledañas (Ciudad Sandino, Ticuantepe, Tipitapa, etc.)
+        // Detección de zonas aledañas (sugerencia no agresiva con confirmación del usuario)
         val autoDetectedZone = ZoneDetector.detectZone(
             coord = destination.coordinate,
             addressText = destination.label,
@@ -735,37 +813,39 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             townOrMunicipality = destination.detectedZoneMunicipality
         )
 
-        val activeZone = if (autoDetectedZone != null) {
+        // Si el usuario ya había confirmado la misma zona para esta ubicación (ej. al terminar geocodificación inversa),
+        // mantenerla seleccionada; de lo contrario, dejar tarifa estándar y mostrar sugerencia para confirmar.
+        val keepConfirmedZone = stateSnapshot.selectedZone != null &&
+            autoDetectedZone != null &&
+            stateSnapshot.selectedZone.id == autoDetectedZone.id
+
+        val activeZone = if (keepConfirmedZone) {
             autoDetectedZone
-        } else if (stateSnapshot.isZoneAutoDetected) {
-            // Si la zona anterior fue detectada automáticamente y el nuevo destino está dentro de Managua,
-            // restaurar automáticamente a tarifa normal de Managua
-            null
-        } else {
+        } else if (!stateSnapshot.isZoneAutoDetected && stateSnapshot.selectedZone != null && autoDetectedZone == null) {
             stateSnapshot.selectedZone
+        } else {
+            null
         }
 
-        val effectiveConfig = activeZone?.let { zone ->
-            cfg.copy(
-                minimumFare = zone.basePrice,
-                costPerExtraKm = if (zone.appliesExtraKm) cfg.costPerExtraKm else 0.0
-            )
-        } ?: cfg
+        val shouldPromptZone = autoDetectedZone != null && activeZone == null
 
         val quote = RoutingAndFareCalculator.calculateQuoteBreakdown(
             route = route,
             modeOverride = stateSnapshot.selectedCalculationMode,
-            config = effectiveConfig,
+            config = cfg,
             applyOffHours = stateSnapshot.applyOffHours,
             applyHoliday = stateSnapshot.applyHoliday,
             applyRainOrDemand = stateSnapshot.applyRainOrDemand,
-            manualExtraAdjustment = stateSnapshot.manualAdjustment
+            manualExtraAdjustment = stateSnapshot.manualAdjustment,
+            activeZone = activeZone,
+            destinationCoord = destination.coordinate
         ).copy(
             selectedZoneName = activeZone?.name,
             customTotalOverride = null
         )
 
-        val shouldPrompt = cfg.preferentialAutoPrompt &&
+        val shouldPrompt = !shouldPromptZone &&
+            cfg.preferentialAutoPrompt &&
             quote.finalRoundedTotal > cfg.preferentialThreshold &&
             stateSnapshot.customTotalOverride == null
 
@@ -784,7 +864,9 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             it.copy(
                 frozenDestination = destination,
                 selectedZone = activeZone,
-                isZoneAutoDetected = autoDetectedZone != null,
+                suggestedZone = autoDetectedZone,
+                showZoneConfirmDialog = shouldPromptZone,
+                isZoneAutoDetected = activeZone != null && autoDetectedZone != null,
                 routeResult = route,
                 quoteBreakdown = quote,
                 customTotalOverride = null,
@@ -801,21 +883,17 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
 
     private fun DeliveryUiState.recalculateQuote(): DeliveryUiState {
         val currentRoute = routeResult ?: return this
-        val effectiveConfig = selectedZone?.let { zone ->
-            config.copy(
-                minimumFare = zone.basePrice,
-                costPerExtraKm = if (zone.appliesExtraKm) config.costPerExtraKm else 0.0
-            )
-        } ?: config
 
         val updatedQuote = RoutingAndFareCalculator.calculateQuoteBreakdown(
             route = currentRoute,
             modeOverride = selectedCalculationMode,
-            config = effectiveConfig,
+            config = config,
             applyOffHours = applyOffHours,
             applyHoliday = applyHoliday,
             applyRainOrDemand = applyRainOrDemand,
-            manualExtraAdjustment = manualAdjustment
+            manualExtraAdjustment = manualAdjustment,
+            activeZone = selectedZone,
+            destinationCoord = frozenDestination?.coordinate
         ).copy(
             selectedZoneName = selectedZone?.name,
             customTotalOverride = customTotalOverride

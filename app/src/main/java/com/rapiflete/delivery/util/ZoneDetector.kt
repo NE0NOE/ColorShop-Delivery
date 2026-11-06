@@ -73,6 +73,30 @@ object ZoneDetector {
         availableZones: List<SpecialZoneRule>,
         townOrMunicipality: String? = null
     ): SpecialZoneRule? {
+        if (availableZones.isEmpty()) return null
+
+        // 1. Verificar primero si cae exactamente dentro del círculo (radio) de alguna zona configurada
+        // (Priorizando la zona cuyo centro esté más cercano al destino)
+        val zonesContainingPoint = availableZones.mapNotNull { zone ->
+            val center = GeoCoordinate(zone.centerLat, zone.centerLng)
+            val distFromCenter = RoutingAndFareCalculator.calculateHaversineKm(center, coord)
+            val maxDetectionRadius = (zone.radiusKm * 2.2).coerceAtLeast(zone.radiusKm + 2.5)
+            if (distFromCenter <= zone.radiusKm) {
+                zone to distFromCenter
+            } else if (distFromCenter <= maxDetectionRadius) {
+                // También candidatizar si está en el perímetro inmediato exterior de la esfera
+                zone to distFromCenter
+            } else {
+                null
+            }
+        }
+
+        // Si cae dentro del radio base de alguna zona, devolver la más cercana al centro
+        val strictlyInside = zonesContainingPoint.filter { (zone, dist) -> dist <= zone.radiusKm }
+        if (strictlyInside.isNotEmpty()) {
+            return strictlyInside.minByOrNull { it.second }?.first
+        }
+
         val normalizedText = addressText.lowercase(Locale.ROOT)
         val normalizedTown = (townOrMunicipality ?: "").lowercase(Locale.ROOT)
 
@@ -80,7 +104,7 @@ object ZoneDetector {
             return availableZones.firstOrNull { it.name.lowercase(Locale.ROOT).contains(keyword) }
         }
 
-        // 1. Detección por nombre en el texto de la dirección o en los detalles de geocodificación
+        // 2. Detección por nombre en el texto de la dirección o en los detalles de geocodificación
         if (normalizedText.contains("ciudad sandino") || normalizedTown.contains("ciudad sandino") ||
             (normalizedText.contains("sandino") && !normalizedText.contains("aeropuerto"))
         ) {
@@ -106,12 +130,17 @@ object ZoneDetector {
         // Detección genérica por cualquier zona personalizada creada por el usuario
         for (zone in availableZones) {
             val zName = zone.name.trim().lowercase(Locale.ROOT)
-            if (zName.length >= 4 && (normalizedText.contains(zName) || normalizedTown.contains(zName))) {
+            if (zName.length >= 3 && (normalizedText.contains(zName) || normalizedTown.contains(zName))) {
                 return zone
             }
         }
 
-        // 2. Detección por coordenadas geográficas precisas
+        // 3. Si está en el perímetro cercano exterior de una zona personalizada con coordenadas
+        if (zonesContainingPoint.isNotEmpty()) {
+            return zonesContainingPoint.minByOrNull { it.second }?.first
+        }
+
+        // 4. Detección de respaldo por cajas geográficas de municipios aledaños
         val lat = coord.latitude
         val lon = coord.longitude
 

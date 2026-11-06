@@ -177,33 +177,34 @@ class PreferencesRepository(context: Context) {
     }
 
     fun loadZones(): List<SpecialZoneRule> {
-        val raw = prefs.getString("zones_json", null) ?: return defaultZones()
+        val raw = prefs.getString("zones_json", null)
+        if (raw == null) {
+            val defaults = defaultZones()
+            saveZones(defaults)
+            return defaults
+        }
         return try {
             val arr = JSONArray(raw)
             val list = ArrayList<SpecialZoneRule>(arr.length())
             for (i in 0 until arr.length()) {
                 val obj = arr.getJSONObject(i)
+                val name = obj.optString("name")
+                val fallback = defaultCoordinateAndRadiusForName(name)
                 list.add(
                     SpecialZoneRule(
                         id = obj.optString("id"),
-                        name = obj.optString("name"),
-                        iconEmoji = obj.optString("iconEmoji", "🏙️"),
+                        name = name,
+                        iconEmoji = obj.optString("iconEmoji", "📍"),
                         basePrice = obj.optDouble("basePrice", 100.0),
-                        appliesExtraKm = obj.optBoolean("appliesExtraKm", false)
+                        centerLat = obj.optDouble("centerLat", fallback.first),
+                        centerLng = obj.optDouble("centerLng", fallback.second),
+                        radiusKm = obj.optDouble("radiusKm", fallback.third),
+                        appliesExtraKm = obj.optBoolean("appliesExtraKm", true),
+                        extraKmPrice = obj.optDouble("extraKmPrice", 10.0)
                     )
                 )
             }
-            val existingNames = list.map { it.name.lowercase(Locale.ROOT) }
-            val missingDefaults = defaultZones().filter { defaultZ ->
-                !existingNames.any { it.contains(defaultZ.name.lowercase(Locale.ROOT)) }
-            }
-            if (missingDefaults.isNotEmpty()) {
-                val merged = list + missingDefaults
-                saveZones(merged)
-                merged
-            } else {
-                list
-            }
+            list
         } catch (_: Exception) {
             defaultZones()
         }
@@ -218,7 +219,11 @@ class PreferencesRepository(context: Context) {
                     put("name", z.name)
                     put("iconEmoji", z.iconEmoji)
                     put("basePrice", z.basePrice)
+                    put("centerLat", z.centerLat)
+                    put("centerLng", z.centerLng)
+                    put("radiusKm", z.radiusKm)
                     put("appliesExtraKm", z.appliesExtraKm)
+                    put("extraKmPrice", z.extraKmPrice)
                 }
             )
         }
@@ -336,27 +341,51 @@ class PreferencesRepository(context: Context) {
         )
     )
 
+    private fun defaultCoordinateAndRadiusForName(name: String): Triple<Double, Double, Double> {
+        val lower = name.lowercase(Locale.ROOT)
+        return when {
+            lower.contains("sandino") -> Triple(12.1564, -86.3489, 2.5)
+            lower.contains("ticuantepe") -> Triple(12.0228, -86.2044, 2.5)
+            lower.contains("tipitapa") -> Triple(12.1972, -86.0969, 3.0)
+            lower.contains("mateare") -> Triple(12.2356, -86.4283, 2.5)
+            lower.contains("crucero") -> Triple(11.9906, -86.3094, 2.5)
+            else -> Triple(12.1364, -86.2513, 2.5)
+        }
+    }
+
     private fun defaultZones(): List<SpecialZoneRule> = listOf(
         SpecialZoneRule(
             id = "z1",
             name = "Ciudad Sandino",
             iconEmoji = "🏙️",
             basePrice = 100.0,
-            appliesExtraKm = false
+            centerLat = 12.1564,
+            centerLng = -86.3489,
+            radiusKm = 2.5,
+            appliesExtraKm = true,
+            extraKmPrice = 10.0
         ),
         SpecialZoneRule(
             id = "z2",
             name = "Ticuantepe",
             iconEmoji = "🌲",
             basePrice = 120.0,
-            appliesExtraKm = false
+            centerLat = 12.0228,
+            centerLng = -86.2044,
+            radiusKm = 2.5,
+            appliesExtraKm = true,
+            extraKmPrice = 10.0
         ),
         SpecialZoneRule(
             id = "z3",
             name = "Tipitapa",
             iconEmoji = "🏭",
             basePrice = 120.0,
-            appliesExtraKm = false
+            centerLat = 12.1972,
+            centerLng = -86.0969,
+            radiusKm = 3.0,
+            appliesExtraKm = true,
+            extraKmPrice = 10.0
         )
     )
 

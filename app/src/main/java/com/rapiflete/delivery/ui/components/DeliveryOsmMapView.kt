@@ -17,6 +17,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.rapiflete.delivery.model.DistanceCalculationMode
 import com.rapiflete.delivery.model.FrozenDestination
 import com.rapiflete.delivery.model.GeoCoordinate
+import com.rapiflete.delivery.model.SpecialZoneRule
 import org.osmdroid.config.Configuration
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
@@ -26,6 +27,7 @@ import org.osmdroid.views.CustomZoomButtonsController
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
 import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polygon
 import org.osmdroid.views.overlay.Polyline
 import org.osmdroid.views.overlay.gestures.RotationGestureOverlay
 
@@ -36,6 +38,7 @@ fun DeliveryOsmMapView(
     destination: FrozenDestination?,
     routePoints: List<GeoCoordinate>,
     calculationMode: DistanceCalculationMode,
+    activeZone: SpecialZoneRule? = null,
     zoomDeltaTrigger: Int = 0,
     resetNorthTrigger: Int = 0,
     onMapTap: (Double, Double) -> Unit,
@@ -135,6 +138,38 @@ fun DeliveryOsmMapView(
             map.overlays.add(MapEventsOverlay(receiver))
 
             val storeGeoPoint = GeoPoint(storeCoord.latitude, storeCoord.longitude)
+
+            // Si hay una zona activa o sugerida, dibujar su esfera / círculo de cobertura y punto central
+            if (activeZone != null) {
+                val zoneCenter = GeoPoint(activeZone.centerLat, activeZone.centerLng)
+                val radiusMeters = (activeZone.radiusKm * 1000.0).coerceAtLeast(200.0)
+                val circlePoints = Polygon.pointsAsCircle(zoneCenter, radiusMeters)
+                val circlePolygon = Polygon(map).apply {
+                    points = circlePoints
+                    fillPaint.color = Color.argb(42, 164, 28, 137) // Rosa/Magenta traslúcido
+                    outlinePaint.color = Color.parseColor("#A41C89")
+                    outlinePaint.strokeWidth = 4.5f
+                    outlinePaint.isAntiAlias = true
+                    title = "Zona: ${activeZone.name} (Radio ${activeZone.radiusKm} km)"
+                }
+                map.overlays.add(circlePolygon)
+
+                val zoneCenterMarker = Marker(map).apply {
+                    position = zoneCenter
+                    setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                    title = "🎯 Centro Zona: ${activeZone.name}"
+                    snippet = "Radio cobertura base: ${activeZone.radiusKm} km"
+                    icon = createColorShopPinDrawable(
+                        context = context,
+                        haloColor = Color.argb(100, 164, 28, 137),
+                        bgColor = Color.WHITE,
+                        borderColor = Color.parseColor("#A41C89"),
+                        textColor = Color.parseColor("#A41C89"),
+                        innerText = "Z"
+                    )
+                }
+                map.overlays.add(zoneCenterMarker)
+            }
 
             // Polilínea doble con efecto halo rosa/magenta estilo ColorShop Stitch
             if (destination != null) {

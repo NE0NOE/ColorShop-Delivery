@@ -8,6 +8,7 @@ import com.rapiflete.delivery.model.PaymentMethodType
 import com.rapiflete.delivery.model.QuoteBreakdown
 import com.rapiflete.delivery.model.RoundingMode
 import com.rapiflete.delivery.model.RouteResult
+import com.rapiflete.delivery.model.SpecialZoneRule
 import com.rapiflete.delivery.model.StoreAndPricingConfig
 import com.rapiflete.delivery.model.SurchargeType
 import com.rapiflete.delivery.model.TransferBankType
@@ -170,7 +171,9 @@ object RoutingAndFareCalculator {
         applyOffHours: Boolean,
         applyHoliday: Boolean,
         applyRainOrDemand: Boolean,
-        manualExtraAdjustment: Double = 0.0
+        manualExtraAdjustment: Double = 0.0,
+        activeZone: SpecialZoneRule? = null,
+        destinationCoord: GeoCoordinate? = null
     ): QuoteBreakdown {
         val effectiveKm = when (modeOverride) {
             DistanceCalculationMode.OSRM_DRIVING -> route.osrmDrivingKm ?: route.adjustedStraightLineKm
@@ -183,12 +186,33 @@ object RoutingAndFareCalculator {
             DistanceCalculationMode.STRAIGHT_LINE_ADJUSTED
         }
 
-        val includedKm = config.includedKmInMinimum.coerceAtLeast(0.0)
-        val extraKm = max(0.0, effectiveKm - includedKm)
-        val extraDistanceCharge = extraKm * config.costPerExtraKm.coerceAtLeast(0.0)
+        val baseMinimumFare: Double
+        val includedKm: Double
+        val extraKm: Double
+        val effectiveExtraKmRate: Double
+
+        if (activeZone != null) {
+            baseMinimumFare = activeZone.basePrice
+            includedKm = activeZone.radiusKm.coerceAtLeast(0.0)
+            effectiveExtraKmRate = if (activeZone.appliesExtraKm) activeZone.extraKmPrice.coerceAtLeast(0.0) else 0.0
+            if (activeZone.appliesExtraKm && destinationCoord != null) {
+                val zoneCenter = GeoCoordinate(activeZone.centerLat, activeZone.centerLng)
+                val distFromZoneCenter = calculateHaversineKm(zoneCenter, destinationCoord)
+                extraKm = max(0.0, distFromZoneCenter - includedKm)
+            } else {
+                extraKm = 0.0
+            }
+        } else {
+            baseMinimumFare = config.minimumFare
+            includedKm = config.includedKmInMinimum.coerceAtLeast(0.0)
+            effectiveExtraKmRate = config.costPerExtraKm.coerceAtLeast(0.0)
+            extraKm = max(0.0, effectiveKm - includedKm)
+        }
+
+        val extraDistanceCharge = extraKm * effectiveExtraKmRate
         val subtotalBeforeSurcharges = max(
-            config.minimumFare,
-            config.minimumFare + extraDistanceCharge
+            baseMinimumFare,
+            baseMinimumFare + extraDistanceCharge
         )
 
         val offHoursCharge = if (applyOffHours) {
@@ -210,7 +234,7 @@ object RoutingAndFareCalculator {
         }
 
         val rawTotal = max(
-            config.minimumFare,
+            baseMinimumFare,
             subtotalBeforeSurcharges + offHoursCharge + holidayCharge + rainCharge + manualExtraAdjustment
         )
 
@@ -224,10 +248,10 @@ object RoutingAndFareCalculator {
             osrmDrivingKm = route.osrmDrivingKm,
             durationMinutes = route.osrmDurationMinutes,
             usedMode = actualMode,
-            baseMinimumFare = config.minimumFare,
+            baseMinimumFare = baseMinimumFare,
             includedKm = includedKm,
             extraKm = extraKm,
-            costPerExtraKm = config.costPerExtraKm,
+            costPerExtraKm = effectiveExtraKmRate,
             extraDistanceCharge = extraDistanceCharge,
             subtotalBeforeSurcharges = subtotalBeforeSurcharges,
             offHoursApplied = applyOffHours,
@@ -237,6 +261,7 @@ object RoutingAndFareCalculator {
             rainApplied = applyRainOrDemand,
             rainCharge = rainCharge,
             manualExtraAdjustment = manualExtraAdjustment,
+            selectedZoneName = activeZone?.name,
             rawTotal = rawTotal,
             finalRoundedTotal = finalRounded,
             roundingDifference = roundingDiff
@@ -408,12 +433,17 @@ object RoutingAndFareCalculator {
 
             val bankText = if (paymentMethod == PaymentMethodType.TRANSFER) transferBank.displayName else ""
 
-            val incText = if (quote.includedKm > 0) " (incluye ${String.format(Locale.US, "%.1f", quote.includedKm)} km)" else ""
+            val incText = if (quote.selectedZoneName != null) {
+                " (Zona ${quote.selectedZoneName}, radio ${String.format(Locale.US, "%.1f", quote.includedKm)} km)"
+            } else if (quote.includedKm > 0) {
+                " (incluye ${String.format(Locale.US, "%.1f", quote.includedKm)} km)"
+            } else ""
             val fareLines = mutableListOf<String>()
-            fareLines.add("• Tarifa mínima envío$incText: ${formatMoney(quote.baseMinimumFare, cur)}")
+            fareLines.add("• Tarifa base envío$incText: ${formatMoney(quote.baseMinimumFare, cur)}")
             if (quote.extraKm > 0.01) {
+                val extraLabel = if (quote.selectedZoneName != null) "Km extra fuera del radio de zona" else "Tarifa de distancia"
                 fareLines.add(
-                    "• Tarifa de distancia (${String.format(Locale.US, "%.2f", quote.extraKm)} km × ${formatMoney(quote.costPerExtraKm, cur)}/km): +${formatMoney(quote.extraDistanceCharge, cur)}"
+                    "• $extraLabel (${String.format(Locale.US, "%.2f", quote.extraKm)} km × ${formatMoney(quote.costPerExtraKm, cur)}/km): +${formatMoney(quote.extraDistanceCharge, cur)}"
                 )
             }
             if (quote.offHoursApplied && quote.offHoursCharge > 0) {
@@ -537,11 +567,16 @@ object RoutingAndFareCalculator {
         if (productAmount > 0.0) {
             sb.appendLine("🛍️ *Total Productos / Mercadería:* ${formatMoney(productAmount, cur)}")
         }
-        val incText = if (quote.includedKm > 0) " (incluye ${String.format(Locale.US, "%.1f", quote.includedKm)} km)" else ""
-        sb.appendLine("• Tarifa mínima envío$incText: ${formatMoney(quote.baseMinimumFare, cur)}")
+        val incText = if (quote.selectedZoneName != null) {
+            " (Zona ${quote.selectedZoneName}, radio ${String.format(Locale.US, "%.1f", quote.includedKm)} km)"
+        } else if (quote.includedKm > 0) {
+            " (incluye ${String.format(Locale.US, "%.1f", quote.includedKm)} km)"
+        } else ""
+        sb.appendLine("• Tarifa base envío$incText: ${formatMoney(quote.baseMinimumFare, cur)}")
         if (quote.extraKm > 0.01) {
+            val extraLabel = if (quote.selectedZoneName != null) "Km extra fuera del radio de zona" else "Tarifa de distancia"
             sb.appendLine(
-                "• Tarifa de distancia (${String.format(Locale.US, "%.2f", quote.extraKm)} km × ${formatMoney(quote.costPerExtraKm, cur)}/km): +${formatMoney(quote.extraDistanceCharge, cur)}"
+                "• $extraLabel (${String.format(Locale.US, "%.2f", quote.extraKm)} km × ${formatMoney(quote.costPerExtraKm, cur)}/km): +${formatMoney(quote.extraDistanceCharge, cur)}"
             )
         }
         if (quote.offHoursApplied && quote.offHoursCharge > 0) {

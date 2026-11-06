@@ -1,6 +1,11 @@
 package com.rapiflete.delivery.ui.screens
 
 import android.app.TimePickerDialog
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.drawable.BitmapDrawable
+import android.view.MotionEvent
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
@@ -34,13 +39,19 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.DirectionsBike
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -50,13 +61,17 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,6 +95,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import org.osmdroid.config.Configuration
+import org.osmdroid.events.MapEventsReceiver
+import org.osmdroid.tileprovider.tilesource.TileSourceFactory
+import org.osmdroid.util.GeoPoint
+import org.osmdroid.views.CustomZoomButtonsController
+import org.osmdroid.views.MapView
+import org.osmdroid.views.overlay.MapEventsOverlay
+import org.osmdroid.views.overlay.Marker
+import org.osmdroid.views.overlay.Polygon
 import com.rapiflete.delivery.model.CourierDriver
 import com.rapiflete.delivery.model.DEFAULT_CUSTOMER_MESSAGE_TEMPLATE
 import com.rapiflete.delivery.model.DEFAULT_DRIVER_DISPATCH_TEMPLATE
@@ -119,7 +146,8 @@ fun SettingsScreen(
     onSaveConfig: (StoreAndPricingConfig) -> Unit,
     onUpdateConfig: (StoreAndPricingConfig) -> Unit = {},
     onOpenCouriers: () -> Unit,
-    onAddSpecialZone: (String, Double, Boolean) -> Unit,
+    onAddSpecialZone: (String, Double, Double, Double, Double, Boolean, Double) -> Unit,
+    onUpdateSpecialZone: (SpecialZoneRule) -> Unit = {},
     onDeleteSpecialZone: (String) -> Unit,
     onApplyManualSurchargeAmount: (Double) -> Unit = {}
 ) {
@@ -157,9 +185,16 @@ fun SettingsScreen(
     var rainType by remember(currentConfig) { mutableStateOf(currentConfig.rainOrHighDemandSurchargeType) }
     var rainValText by remember(currentConfig) { mutableStateOf(currentConfig.rainOrHighDemandSurchargeValue.toString()) }
 
+    var editingZoneId by remember { mutableStateOf<String?>(null) }
     var newZoneName by remember { mutableStateOf("") }
     var newZonePriceText by remember { mutableStateOf("100.0") }
-    var newZoneAppliesExtraKm by remember { mutableStateOf(false) }
+    var newZoneRadiusText by remember { mutableStateOf("2.5") }
+    var newZoneCenterLat by remember { mutableDoubleStateOf(12.1564) }
+    var newZoneCenterLng by remember { mutableDoubleStateOf(-86.3489) }
+    var hasSelectedZonePinInMap by remember { mutableStateOf(false) }
+    var newZoneAppliesExtraKm by remember { mutableStateOf(true) }
+    var newZoneExtraKmPriceText by remember(currentConfig) { mutableStateOf(currentConfig.costPerExtraKm.toString()) }
+    var showZoneMapPickerDialog by remember { mutableStateOf(false) }
 
     var roundingMode by remember(currentConfig) { mutableStateOf(currentConfig.roundingMode) }
     var defaultShareFormat by remember(currentConfig) { mutableStateOf(currentConfig.defaultShareFormat) }
@@ -1244,70 +1279,37 @@ fun SettingsScreen(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // Cabecera compacta y armónica
+                    // Cabecera limpia y despejada (sin badges apiñados a la derecha)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(ColorShopSurfaceLow),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(ColorShopSurfaceLow),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("📍", fontSize = 18.sp)
-                            }
-                            Column(modifier = Modifier.weight(1f, fill = false)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Text(
-                                        text = "Zonas de Recargo / Aledañas",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.ExtraBold,
-                                        color = ColorShopDeepPlum,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.weight(1f, fill = false)
-                                    )
-                                    CategoryBadge(
-                                        text = "Aledañas",
-                                        containerColor = Color(0xFFE0F2FE),
-                                        contentColor = Color(0xFF0369A1)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "Tarifas planas o bases para municipios y zonas distantes",
-                                    fontSize = 11.sp,
-                                    color = ColorShopMutedPlum,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                            Text("📍", fontSize = 18.sp)
                         }
-
-                        // Píldora de estado protegida por weight para no desbordarse
-                        Surface(
-                            color = ColorShopSurfaceHigh,
-                            shape = RoundedCornerShape(50)
-                        ) {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "${zones.size} Activas",
-                                fontSize = 10.sp,
+                                text = "Zonas de Recargo / Aledañas",
+                                fontSize = 15.sp,
                                 fontWeight = FontWeight.ExtraBold,
-                                color = ColorShopPrimary,
+                                color = ColorShopDeepPlum,
                                 maxLines = 1,
-                                softWrap = false,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Tarifas base, radio en mapa y km extra fuera de cobertura",
+                                fontSize = 11.5.sp,
+                                color = ColorShopMutedPlum,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -1330,12 +1332,28 @@ fun SettingsScreen(
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             zones.forEach { zone ->
+                                val isBeingEdited = editingZoneId == zone.id
                                 Surface(
-                                    color = Color.White,
+                                    color = if (isBeingEdited) ColorShopSurfaceLow.copy(alpha = 0.45f) else Color.White,
                                     shape = RoundedCornerShape(16.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(16.dp))
+                                        .border(
+                                            width = if (isBeingEdited) 1.5.dp else 1.dp,
+                                            color = if (isBeingEdited) ColorShopPrimary else ColorShopSurfaceHigh,
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
+                                        .clickable {
+                                            editingZoneId = zone.id
+                                            newZoneName = zone.name
+                                            newZonePriceText = String.format(Locale.US, "%.0f", zone.basePrice)
+                                            newZoneRadiusText = String.format(Locale.US, "%.1f", zone.radiusKm)
+                                            newZoneCenterLat = zone.centerLat
+                                            newZoneCenterLng = zone.centerLng
+                                            hasSelectedZonePinInMap = true
+                                            newZoneAppliesExtraKm = zone.appliesExtraKm
+                                            newZoneExtraKmPriceText = String.format(Locale.US, "%.0f", zone.extraKmPrice)
+                                        }
                                 ) {
                                     Row(
                                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -1349,21 +1367,21 @@ fun SettingsScreen(
                                         ) {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(28.dp)
+                                                    .size(30.dp)
                                                     .clip(CircleShape)
                                                     .background(ColorShopSurfaceLow),
                                                 contentAlignment = Alignment.Center
                                             ) {
-                                                Text(zone.iconEmoji, fontSize = 13.sp)
+                                                Text(zone.iconEmoji, fontSize = 14.sp)
                                             }
-                                            Column(modifier = Modifier.weight(1f, fill = false)) {
+                                            Column(modifier = Modifier.weight(1f)) {
                                                 Row(
                                                     verticalAlignment = Alignment.CenterVertically,
                                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                                 ) {
                                                     Text(
                                                         text = zone.name,
-                                                        fontSize = 13.sp,
+                                                        fontSize = 13.5.sp,
                                                         fontWeight = FontWeight.Bold,
                                                         color = ColorShopDeepPlum,
                                                         maxLines = 1,
@@ -1374,8 +1392,8 @@ fun SettingsScreen(
                                                         shape = RoundedCornerShape(50)
                                                     ) {
                                                         Text(
-                                                            text = "Zona Aledaña",
-                                                            fontSize = 9.sp,
+                                                            text = "Radio ${String.format(Locale.US, "%.1f", zone.radiusKm)} km",
+                                                            fontSize = 9.5.sp,
                                                             fontWeight = FontWeight.Bold,
                                                             color = ColorShopPrimary,
                                                             maxLines = 1,
@@ -1384,9 +1402,13 @@ fun SettingsScreen(
                                                         )
                                                     }
                                                 }
-                                                val extraLabel = if (zone.appliesExtraKm) "+Km estándar" else "Sin km adicional"
+                                                val extraLabel = if (zone.appliesExtraKm) {
+                                                    "+$currencySymbol${zone.extraKmPrice.toInt()}/km fuera del círculo"
+                                                } else {
+                                                    "Tarifa fija sin km extra"
+                                                }
                                                 Text(
-                                                    text = "Precio Base: $currencySymbol ${zone.basePrice} · $extraLabel",
+                                                    text = "Base: $currencySymbol ${zone.basePrice.toInt()} · $extraLabel",
                                                     fontSize = 11.sp,
                                                     color = ColorShopMutedPlum,
                                                     maxLines = 1,
@@ -1395,16 +1417,48 @@ fun SettingsScreen(
                                             }
                                         }
 
-                                        IconButton(
-                                            onClick = { onDeleteSpecialZone(zone.id) },
-                                            modifier = Modifier.size(36.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.DeleteOutline,
-                                                contentDescription = "Eliminar zona",
-                                                tint = ColorShopMutedPlum,
-                                                modifier = Modifier.size(20.dp)
-                                            )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = {
+                                                    editingZoneId = zone.id
+                                                    newZoneName = zone.name
+                                                    newZonePriceText = String.format(Locale.US, "%.0f", zone.basePrice)
+                                                    newZoneRadiusText = String.format(Locale.US, "%.1f", zone.radiusKm)
+                                                    newZoneCenterLat = zone.centerLat
+                                                    newZoneCenterLng = zone.centerLng
+                                                    hasSelectedZonePinInMap = true
+                                                    newZoneAppliesExtraKm = zone.appliesExtraKm
+                                                    newZoneExtraKmPriceText = String.format(Locale.US, "%.0f", zone.extraKmPrice)
+                                                    showZoneMapPickerDialog = true
+                                                },
+                                                modifier = Modifier.size(34.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Map,
+                                                    contentDescription = "Ver o editar círculo en mapa",
+                                                    tint = ColorShopPrimary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    if (editingZoneId == zone.id) {
+                                                        editingZoneId = null
+                                                        newZoneName = ""
+                                                        hasSelectedZonePinInMap = false
+                                                    }
+                                                    onDeleteSpecialZone(zone.id)
+                                                    Toast.makeText(context, "Zona eliminada", Toast.LENGTH_SHORT).show()
+                                                },
+                                                modifier = Modifier.size(34.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.DeleteOutline,
+                                                    contentDescription = "Eliminar zona",
+                                                    tint = ColorShopMutedPlum,
+                                                    modifier = Modifier.size(19.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -1412,7 +1466,7 @@ fun SettingsScreen(
                         }
                     }
 
-                    // Formulario Añadir Nueva Zona
+                    // Formulario Añadir / Editar Zona con Esfera / Círculo en Mapa
                     Surface(
                         color = ColorShopSurfaceLow.copy(alpha = 0.45f),
                         shape = RoundedCornerShape(18.dp),
@@ -1422,18 +1476,41 @@ fun SettingsScreen(
                     ) {
                         Column(
                             modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text(
-                                text = "AÑADIR NUEVA ZONA",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = ColorShopDeepPlum
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = if (editingZoneId != null) "EDITAR ZONA SELECCIONADA" else "AÑADIR NUEVA ZONA",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = ColorShopDeepPlum
+                                )
+                                if (editingZoneId != null) {
+                                    TextButton(
+                                        onClick = {
+                                            editingZoneId = null
+                                            newZoneName = ""
+                                            newZonePriceText = "100"
+                                            newZoneRadiusText = "2.5"
+                                            hasSelectedZonePinInMap = false
+                                            newZoneAppliesExtraKm = true
+                                            newZoneExtraKmPriceText = currentConfig.costPerExtraKm.toString()
+                                        }
+                                    ) {
+                                        Text("Cancelar edición", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = ColorShopPrimary)
+                                    }
+                                }
+                            }
+
                             OutlinedTextField(
                                 value = newZoneName,
                                 onValueChange = { newZoneName = it },
-                                placeholder = { Text("Ej. Ciudad Sandino, Tipitapa...", fontSize = 12.sp) },
+                                label = { Text("Nombre o etiqueta de la zona", fontSize = 11.sp) },
+                                placeholder = { Text("Ej. Ciudad Sandino, Tipitapa, Veracruz...", fontSize = 12.sp) },
                                 singleLine = true,
                                 shape = RoundedCornerShape(14.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
@@ -1445,6 +1522,79 @@ fun SettingsScreen(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
+                            // Botón interactivo para ubicar el Punto Central y el Radio de Cobertura en el Mapa
+                            Surface(
+                                color = Color.White,
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.5.dp, ColorShopPrimary.copy(alpha = 0.55f)),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .clickable { showZoneMapPickerDialog = true }
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(ColorShopSurfaceLow),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Map,
+                                                contentDescription = null,
+                                                tint = ColorShopPrimary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = if (hasSelectedZonePinInMap || editingZoneId != null) {
+                                                    "Centro y círculo configurados en mapa"
+                                                } else {
+                                                    "Ubicar centro y círculo de tarifa en mapa"
+                                                },
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = ColorShopDeepPlum
+                                            )
+                                            Text(
+                                                text = "Coord: ${String.format(Locale.US, "%.4f, %.4f", newZoneCenterLat, newZoneCenterLng)} · Radio: ${newZoneRadiusText.ifBlank { "2.5" }} km",
+                                                fontSize = 10.5.sp,
+                                                color = ColorShopMutedPlum,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+
+                                    Surface(
+                                        color = ColorShopPrimary,
+                                        shape = RoundedCornerShape(50)
+                                    ) {
+                                        Text(
+                                            text = "Abrir Mapa",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Fila: Costo Normal (Precio Base) + Radio de Cobertura (km)
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1453,10 +1603,11 @@ fun SettingsScreen(
                                 OutlinedTextField(
                                     value = newZonePriceText,
                                     onValueChange = { newZonePriceText = it },
+                                    label = { Text("Precio Base Zona", fontSize = 10.5.sp) },
                                     prefix = { Text("$currencySymbol ", fontWeight = FontWeight.Bold) },
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                     singleLine = true,
-                                    textStyle = TextStyle(fontSize = 12.5.sp),
+                                    textStyle = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold),
                                     shape = RoundedCornerShape(14.dp),
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = ColorShopPrimary,
@@ -1467,48 +1618,138 @@ fun SettingsScreen(
                                     modifier = Modifier.weight(1f)
                                 )
 
+                                OutlinedTextField(
+                                    value = newZoneRadiusText,
+                                    onValueChange = { newZoneRadiusText = it },
+                                    label = { Text("Radio Círculo", fontSize = 10.5.sp) },
+                                    suffix = { Text("km", fontWeight = FontWeight.Bold, color = ColorShopMutedPlum) },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                    singleLine = true,
+                                    textStyle = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ColorShopPrimary,
+                                        unfocusedBorderColor = ColorShopSurfaceHigh,
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White
+                                    ),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            // Fila: Checkbox Aplica Km extra al salir del círculo + Costo por Km extra
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     modifier = Modifier
+                                        .weight(1.15f)
                                         .clip(RoundedCornerShape(14.dp))
                                         .background(Color.White)
+                                        .border(1.dp, ColorShopSurfaceHigh, RoundedCornerShape(14.dp))
                                         .clickable { newZoneAppliesExtraKm = !newZoneAppliesExtraKm }
                                         .padding(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
-                                    Text(
-                                        text = "Aplica Km adic.",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ColorShopDeepPlum,
-                                        maxLines = 1
-                                    )
                                     Checkbox(
                                         checked = newZoneAppliesExtraKm,
                                         onCheckedChange = { newZoneAppliesExtraKm = it },
                                         colors = CheckboxDefaults.colors(checkedColor = ColorShopPrimary)
+                                    )
+                                    Column {
+                                        Text(
+                                            text = "Km extra fuera",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorShopDeepPlum,
+                                            maxLines = 1
+                                        )
+                                        Text(
+                                            text = "Al salir del radio",
+                                            fontSize = 9.5.sp,
+                                            color = ColorShopMutedPlum,
+                                            maxLines = 1
+                                        )
+                                    }
+                                }
+
+                                if (newZoneAppliesExtraKm) {
+                                    OutlinedTextField(
+                                        value = newZoneExtraKmPriceText,
+                                        onValueChange = { newZoneExtraKmPriceText = it },
+                                        label = { Text("Costo Km Extra", fontSize = 10.5.sp) },
+                                        prefix = { Text("$currencySymbol ", fontWeight = FontWeight.Bold) },
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                        singleLine = true,
+                                        textStyle = TextStyle(fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedBorderColor = ColorShopPrimary,
+                                            unfocusedBorderColor = ColorShopSurfaceHigh,
+                                            focusedContainerColor = Color.White,
+                                            unfocusedContainerColor = Color.White
+                                        ),
+                                        modifier = Modifier.weight(1f)
                                     )
                                 }
                             }
 
                             Button(
                                 onClick = {
-                                    if (newZoneName.isBlank()) {
+                                    val cleanName = newZoneName.trim()
+                                    if (cleanName.isBlank()) {
                                         Toast.makeText(context, "Escribe el nombre de la zona", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
-                                    onAddSpecialZone(
-                                        newZoneName,
-                                        newZonePriceText.toDoubleOrNull() ?: 100.0,
-                                        newZoneAppliesExtraKm
-                                    )
+                                    val parsedBase = newZonePriceText.replace(",", ".").toDoubleOrNull() ?: 100.0
+                                    val parsedRadius = (newZoneRadiusText.replace(",", ".").toDoubleOrNull() ?: 2.5).coerceAtLeast(0.2)
+                                    val parsedExtraKm = newZoneExtraKmPriceText.replace(",", ".").toDoubleOrNull()
+                                        ?: currentConfig.costPerExtraKm
+
+                                    val currentEditId = editingZoneId
+                                    if (currentEditId != null) {
+                                        val existing = zones.find { it.id == currentEditId }
+                                        onUpdateSpecialZone(
+                                            SpecialZoneRule(
+                                                id = currentEditId,
+                                                name = cleanName,
+                                                iconEmoji = existing?.iconEmoji ?: "📍",
+                                                basePrice = parsedBase,
+                                                centerLat = newZoneCenterLat,
+                                                centerLng = newZoneCenterLng,
+                                                radiusKm = parsedRadius,
+                                                appliesExtraKm = newZoneAppliesExtraKm,
+                                                extraKmPrice = parsedExtraKm
+                                            )
+                                        )
+                                        editingZoneId = null
+                                        Toast.makeText(context, "Zona actualizada y guardada", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        onAddSpecialZone(
+                                            cleanName,
+                                            parsedBase,
+                                            newZoneCenterLat,
+                                            newZoneCenterLng,
+                                            parsedRadius,
+                                            newZoneAppliesExtraKm,
+                                            parsedExtraKm
+                                        )
+                                        Toast.makeText(context, "Nueva zona guardada correctamente", Toast.LENGTH_SHORT).show()
+                                    }
                                     newZoneName = ""
-                                    Toast.makeText(context, "Zona agregada", Toast.LENGTH_SHORT).show()
+                                    hasSelectedZonePinInMap = false
                                 },
                                 shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text("Guardar Zona", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = if (editingZoneId != null) "Guardar Cambios de Zona" else "Guardar Zona",
+                                    fontSize = 12.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }
@@ -2111,7 +2352,378 @@ fun SettingsScreen(
             Spacer(modifier = Modifier.height(28.dp))
         }
     }
+
+    if (showZoneMapPickerDialog) {
+        val currentRadiusKm = (newZoneRadiusText.replace(",", ".").toDoubleOrNull() ?: 2.5).coerceIn(0.2, 25.0)
+        ZoneCircleMapPickerDialog(
+            zoneName = newZoneName.ifBlank { "Nueva Zona" },
+            storeCoord = currentConfig.storeCoordinate,
+            initialCenterLat = newZoneCenterLat,
+            initialCenterLng = newZoneCenterLng,
+            initialRadiusKm = currentRadiusKm,
+            onDismiss = { showZoneMapPickerDialog = false },
+            onConfirm = { pickedLat, pickedLng, pickedRadiusKm ->
+                newZoneCenterLat = pickedLat
+                newZoneCenterLng = pickedLng
+                newZoneRadiusText = String.format(Locale.US, "%.1f", pickedRadiusKm)
+                hasSelectedZonePinInMap = true
+                showZoneMapPickerDialog = false
+            }
+        )
+    }
 }
+}
+
+@Composable
+private fun ZoneCircleMapPickerDialog(
+    zoneName: String,
+    storeCoord: GeoCoordinate,
+    initialCenterLat: Double,
+    initialCenterLng: Double,
+    initialRadiusKm: Double,
+    onDismiss: () -> Unit,
+    onConfirm: (Double, Double, Double) -> Unit
+) {
+    val context = LocalContext.current
+    var centerLat by remember { mutableDoubleStateOf(initialCenterLat) }
+    var centerLng by remember { mutableDoubleStateOf(initialCenterLng) }
+    var radiusKm by remember { mutableDoubleStateOf(initialRadiusKm.coerceIn(0.3, 15.0)) }
+
+    val mapView = remember {
+        Configuration.getInstance().userAgentValue = context.packageName
+        MapView(context).apply {
+            setTileSource(TileSourceFactory.MAPNIK)
+            setMultiTouchControls(true)
+            zoomController.setVisibility(CustomZoomButtonsController.Visibility.NEVER)
+            controller.setZoom(13.2)
+            controller.setCenter(GeoPoint(centerLat, centerLng))
+            setOnTouchListener { v, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN, MotionEvent.ACTION_MOVE -> {
+                        v.parent?.requestDisallowInterceptTouchEvent(true)
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        v.parent?.requestDisallowInterceptTouchEvent(false)
+                    }
+                }
+                false
+            }
+        }
+    }
+
+    DisposableEffect(mapView) {
+        mapView.onResume()
+        onDispose {
+            mapView.onPause()
+        }
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            color = Color.White,
+            shape = RoundedCornerShape(28.dp),
+            shadowElevation = 12.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 20.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Cabecera del selector de mapa
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(ColorShopSurfaceLow),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("🎯", fontSize = 18.sp)
+                        }
+                        Column {
+                            Text(
+                                text = "Delimitar Zona en Mapa",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopDeepPlum
+                            )
+                            Text(
+                                text = "Toca el mapa para fijar el centro de '$zoneName'",
+                                fontSize = 11.5.sp,
+                                color = ColorShopMutedPlum
+                            )
+                        }
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cerrar",
+                            tint = ColorShopMutedPlum
+                        )
+                    }
+                }
+
+                // Accesos rápidos de municipios de referencia por si desea centrar rápido
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val quickPoints = listOf(
+                        "C. Sandino" to GeoPoint(12.1564, -86.3489),
+                        "Ticuantepe" to GeoPoint(12.0228, -86.2044),
+                        "Tipitapa" to GeoPoint(12.1972, -86.0969),
+                        "Managua" to GeoPoint(storeCoord.latitude, storeCoord.longitude)
+                    )
+                    quickPoints.forEach { (label, pt) ->
+                        Surface(
+                            color = ColorShopSurfaceLow,
+                            shape = RoundedCornerShape(50),
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(50))
+                                .clickable {
+                                    centerLat = pt.latitude
+                                    centerLng = pt.longitude
+                                    mapView.controller.animateTo(pt)
+                                }
+                        ) {
+                            Text(
+                                text = label,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopPrimary,
+                                textAlign = TextAlign.Center,
+                                maxLines = 1,
+                                modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp)
+                            )
+                        }
+                    }
+                }
+
+                // Contenedor del Mapa con Círculo (Esfera) en tiempo real
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(320.dp)
+                        .clip(RoundedCornerShape(20.dp))
+                        .border(1.5.dp, ColorShopSurfaceHigh, RoundedCornerShape(20.dp))
+                ) {
+                    AndroidView(
+                        factory = { mapView },
+                        modifier = Modifier.fillMaxSize(),
+                        update = { map ->
+                            map.overlays.clear()
+                            val receiver = object : MapEventsReceiver {
+                                override fun singleTapConfirmedHelper(p: GeoPoint?): Boolean {
+                                    if (p != null) {
+                                        centerLat = p.latitude
+                                        centerLng = p.longitude
+                                    }
+                                    return true
+                                }
+
+                                override fun longPressHelper(p: GeoPoint?): Boolean {
+                                    if (p != null) {
+                                        centerLat = p.latitude
+                                        centerLng = p.longitude
+                                    }
+                                    return true
+                                }
+                            }
+                            map.overlays.add(MapEventsOverlay(receiver))
+
+                            val centerGeo = GeoPoint(centerLat, centerLng)
+                            val radiusMeters = (radiusKm * 1000.0).coerceAtLeast(200.0)
+                            val circlePts = Polygon.pointsAsCircle(centerGeo, radiusMeters)
+
+                            val circleOverlay = Polygon(map).apply {
+                                points = circlePts
+                                fillPaint.color = android.graphics.Color.argb(55, 164, 28, 137)
+                                outlinePaint.color = android.graphics.Color.parseColor("#A41C89")
+                                outlinePaint.strokeWidth = 5f
+                                outlinePaint.isAntiAlias = true
+                            }
+                            map.overlays.add(circleOverlay)
+
+                            val centerMarker = Marker(map).apply {
+                                position = centerGeo
+                                setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
+                                title = "Centro: $zoneName"
+                                icon = createZoneCenterDrawable(context)
+                            }
+                            map.overlays.add(centerMarker)
+
+                            map.invalidate()
+                        }
+                    )
+
+                    // Botones de Zoom flotantes en la esquina derecha
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Surface(
+                            color = Color.White.copy(alpha = 0.92f),
+                            shape = CircleShape,
+                            shadowElevation = 4.dp,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            IconButton(onClick = { mapView.controller.zoomIn() }) {
+                                Icon(Icons.Default.Add, contentDescription = "Acercar", tint = ColorShopDeepPlum, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        Surface(
+                            color = Color.White.copy(alpha = 0.92f),
+                            shape = CircleShape,
+                            shadowElevation = 4.dp,
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            IconButton(onClick = { mapView.controller.zoomOut() }) {
+                                Icon(Icons.Default.Remove, contentDescription = "Alejar", tint = ColorShopDeepPlum, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+
+                    // Pill inferior con coordenadas y diámetro
+                    Surface(
+                        color = Color.White.copy(alpha = 0.94f),
+                        shape = RoundedCornerShape(50),
+                        shadowElevation = 4.dp,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 10.dp)
+                    ) {
+                        Text(
+                            text = "📍 ${String.format(Locale.US, "%.4f, %.4f", centerLat, centerLng)} • Radio: ${String.format(Locale.US, "%.1f", radiusKm)} km (Diámetro ${String.format(Locale.US, "%.1f", radiusKm * 2)} km)",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ColorShopDeepPlum,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+
+                // Control deslizante de Radio (Esfera de cobertura de la tarifa base)
+                Surface(
+                    color = ColorShopSurfaceLow.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Radio de cobertura de tarifa base:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ColorShopDeepPlum
+                            )
+                            Text(
+                                text = "${String.format(Locale.US, "%.1f", radiusKm)} km",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ColorShopPrimary
+                            )
+                        }
+                        Slider(
+                            value = radiusKm.toFloat(),
+                            onValueChange = { radiusKm = (it * 10).toInt() / 10.0 },
+                            valueRange = 0.5f..10.0f,
+                            colors = SliderDefaults.colors(
+                                thumbColor = ColorShopPrimary,
+                                activeTrackColor = ColorShopPrimary,
+                                inactiveTrackColor = ColorShopSurfaceHigh
+                            )
+                        )
+                        Text(
+                            text = "Dentro de este círculo aplica el Precio Base de la zona. Al salir del círculo se suman los kilómetros adicionales.",
+                            fontSize = 10.5.sp,
+                            color = ColorShopMutedPlum
+                        )
+                    }
+                }
+
+                // Botones Cancelar y Confirmar
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cancelar", fontWeight = FontWeight.Bold, color = ColorShopMutedPlum)
+                    }
+                    Button(
+                        onClick = { onConfirm(centerLat, centerLng, radiusKm) },
+                        shape = RoundedCornerShape(50),
+                        colors = ButtonDefaults.buttonColors(containerColor = ColorShopPrimary),
+                        modifier = Modifier.weight(1.4f)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Confirmar Zona", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun createZoneCenterDrawable(context: android.content.Context): BitmapDrawable {
+    val sizePx = 80
+    val bitmap = Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    val center = sizePx / 2f
+
+    val haloPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(110, 164, 28, 137)
+        style = Paint.Style.FILL
+    }
+    canvas.drawCircle(center, center, (sizePx / 2f) - 2f, haloPaint)
+
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.parseColor("#A41C89")
+        style = Paint.Style.FILL
+    }
+    canvas.drawCircle(center, center, 22f, fillPaint)
+
+    val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.STROKE
+        strokeWidth = 5f
+    }
+    canvas.drawCircle(center, center, 20f, borderPaint)
+
+    val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.WHITE
+        style = Paint.Style.FILL
+    }
+    canvas.drawCircle(center, center, 6f, dotPaint)
+
+    return BitmapDrawable(context.resources, bitmap)
 }
 
 @Composable
