@@ -233,19 +233,18 @@ fun HistoryScreen(
         )
     }
 
-    // Envíos con pago electrónico no liquidados al motorizado (acumula hoy, ayer y días anteriores)
-    // Los pagos en efectivo se excluyen porque el motorizado ya se los auto-descuenta de inmediato.
+    // Envíos con saldo pendiente de pago al motorizado (acumula hoy, ayer y días anteriores)
     val allUnpaidElectronicDeliveries = remember(records, selectedCourierName) {
         records.filter { rec ->
             !rec.isDriverPaid &&
-            rec.paymentMethod != PaymentMethodType.CASH &&
+            rec.driverPendingFromStore > 0.009 &&
             rec.orderStatus != OrderStatus.CANCELADO &&
             (selectedCourierName == null || rec.courierName.equals(selectedCourierName, ignoreCase = true))
         }
     }
 
     val totalOwedAllTime = remember(allUnpaidElectronicDeliveries) {
-        allUnpaidElectronicDeliveries.sumOf { it.deliveryFee }
+        allUnpaidElectronicDeliveries.sumOf { it.driverPendingFromStore }
     }
 
     val unpaidPastDays = remember(allUnpaidElectronicDeliveries, todayIso) {
@@ -282,6 +281,7 @@ fun HistoryScreen(
             val matchesPayment = when (selectedPaymentFilter) {
                 "CASH" -> rec.paymentMethod == PaymentMethodType.CASH
                 "TRANSFER" -> rec.paymentMethod == PaymentMethodType.TRANSFER
+                "MIXED" -> rec.paymentMethod == PaymentMethodType.MIXED
                 else -> true
             }
             val matchesCourier = selectedCourierName == null ||
@@ -983,14 +983,14 @@ fun HistoryScreen(
                     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         if (unpaidPastDays.isNotEmpty()) {
                             Text(
-                                text = "⚠️ Acumulado de días anteriores: $currencySymbol ${unpaidPastDays.sumOf { it.deliveryFee }.toInt()} (${unpaidPastDays.size} envíos)",
+                                text = "⚠️ Acumulado de días anteriores: $currencySymbol ${unpaidPastDays.sumOf { it.driverPendingFromStore }.toInt()} (${unpaidPastDays.size} envíos)",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFFD84315)
                             )
                         }
                         Text(
-                            text = "• Saldo pendiente de hoy: $currencySymbol ${unpaidToday.sumOf { it.deliveryFee }.toInt()} (${unpaidToday.size} envíos)",
+                            text = "• Saldo pendiente de hoy: $currencySymbol ${unpaidToday.sumOf { it.driverPendingFromStore }.toInt()} (${unpaidToday.size} envíos)",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Medium,
                             color = ColorShopDeepPlum
@@ -1200,7 +1200,12 @@ fun HistoryScreen(
                                     }
                                 }
                                 if (selectedPaymentFilter != "ALL") {
-                                    val pText = if (selectedPaymentFilter == "CASH") "Efectivo" else "Transferencia"
+                                    val pText = when (selectedPaymentFilter) {
+                                        "CASH" -> "Efectivo"
+                                        "TRANSFER" -> "Transferencia"
+                                        "MIXED" -> "Mixto"
+                                        else -> selectedPaymentFilter
+                                    }
                                     CompactFilterBadge(text = pText) {
                                         selectedPaymentFilter = "ALL"
                                     }
@@ -1314,6 +1319,11 @@ fun HistoryScreen(
                                 label = "Transferencia",
                                 selected = selectedPaymentFilter == "TRANSFER",
                                 onClick = { selectedPaymentFilter = "TRANSFER" }
+                            )
+                            HistoryFilterPill(
+                                label = "Mixto / Parcial",
+                                selected = selectedPaymentFilter == "MIXED",
+                                onClick = { selectedPaymentFilter = "MIXED" }
                             )
                         }
 
@@ -2018,6 +2028,9 @@ private fun TimelineHistoryItem(
                             PaymentMethodType.CASH -> {
                                 Triple("Efectivo 💵", ColorShopSurfaceHigh, ColorShopPrimary)
                             }
+                            PaymentMethodType.MIXED -> {
+                                Triple("Pago Mixto 💵+🏦", Color(0xFFF3E5F5), ColorShopPrimary)
+                            }
                         }
                         Surface(
                             color = badgeBgColor,
@@ -2030,7 +2043,7 @@ private fun TimelineHistoryItem(
                             ) {
                                 Icon(
                                     imageVector = when (record.paymentMethod) {
-                                        PaymentMethodType.CASH -> Icons.Default.Payments
+                                        PaymentMethodType.CASH, PaymentMethodType.MIXED -> Icons.Default.Payments
                                         PaymentMethodType.TRANSFER -> Icons.Default.AccountBalance
                                         PaymentMethodType.POS -> Icons.Default.PointOfSale
                                     },
@@ -2058,7 +2071,7 @@ private fun TimelineHistoryItem(
                     }
                 }
 
-                // Estado de Liquidación con el Motorizado (Efectivo auto-descontado vs Transferencia/POS pendiente o pagado)
+                // Estado de Liquidación con el Motorizado (Efectivo auto-descontado vs Mixto vs Transferencia/POS pendiente o pagado)
                 if (record.paymentMethod == PaymentMethodType.CASH) {
                     Surface(
                         color = Color(0xFFE8F5E9),
@@ -2096,6 +2109,111 @@ private fun TimelineHistoryItem(
                                     color = Color.White,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                 )
+                            }
+                        }
+                    }
+                } else if (record.paymentMethod == PaymentMethodType.MIXED) {
+                    if (record.driverPendingFromStore <= 0.009) {
+                        // Caso A o B: El motorizado cubrió su tarifa completa con el efectivo cobrado
+                        Surface(
+                            color = Color(0xFFE8F5E9),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(1.dp, Color(0xFF2E7D32).copy(alpha = 0.25f), RoundedCornerShape(10.dp))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "💵 Envío cubierto con efectivo del Pago Mixto",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1B5E20)
+                                    )
+                                    val subText = if (record.storeCashOwedByDriver > 0.009) {
+                                        "Cobró ${record.currencySymbol}${record.effectiveCashToCollect.toInt()} en efectivo, retuvo su envío (${record.currencySymbol}${record.deliveryFee.toInt()}) y debe depositar ${record.currencySymbol}${record.storeCashOwedByDriver.toInt()} a tienda."
+                                    } else {
+                                        "Cobró ${record.currencySymbol}${record.effectiveCashToCollect.toInt()} en efectivo cubriendo exacto su envío (${record.currencySymbol}${record.deliveryFee.toInt()}). Deposita ${record.currencySymbol}0 a tienda."
+                                    }
+                                    Text(
+                                        text = subText,
+                                        fontSize = 10.sp,
+                                        color = Color(0xFF2E7D32)
+                                    )
+                                }
+                                Surface(
+                                    color = Color(0xFF2E7D32),
+                                    shape = RoundedCornerShape(50)
+                                ) {
+                                    Text(
+                                        text = "Liquidado ✅",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        // Caso C: El efectivo cobrado no cubrió la totalidad del envío, tienda debe pagarle el resto
+                        Surface(
+                            color = if (record.isDriverPaid) Color(0xFFE8F5E9) else Color(0xFFFFF3E0),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(
+                                    1.dp,
+                                    if (record.isDriverPaid) Color(0xFF2E7D32).copy(alpha = 0.25f) else Color(0xFFE65100).copy(alpha = 0.35f),
+                                    RoundedCornerShape(10.dp)
+                                )
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (record.isDriverPaid) {
+                                            "✅ Saldo de envío pagado al motorizado (${record.currencySymbol}${record.driverPendingFromStore.toInt()})"
+                                        } else {
+                                            "⏳ Saldo de envío pendiente al motorizado (${record.currencySymbol}${record.driverPendingFromStore.toInt()})"
+                                        },
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (record.isDriverPaid) Color(0xFF1B5E20) else Color(0xFFBF360C)
+                                    )
+                                    Text(
+                                        text = "Retuvo ${record.currencySymbol}${record.driverCashRetained.toInt()} en efectivo de su envío (${record.currencySymbol}${record.deliveryFee.toInt()}). Tienda cubre el resto (${record.currencySymbol}${record.driverPendingFromStore.toInt()}).",
+                                        fontSize = 10.sp,
+                                        color = if (record.isDriverPaid) Color(0xFF2E7D32) else Color(0xFFE65100)
+                                    )
+                                }
+                                Surface(
+                                    color = if (record.isDriverPaid) ColorShopSurfaceHigh else Color(0xFFE65100),
+                                    shape = RoundedCornerShape(50),
+                                    shadowElevation = if (record.isDriverPaid) 0.dp else 2.dp,
+                                    modifier = Modifier
+                                        .heightIn(min = 38.dp)
+                                        .clickable { onToggleDriverPaid() }
+                                ) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = if (record.isDriverPaid) "Desmarcar ↩️" else "Marcar Pagado ✅",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (record.isDriverPaid) ColorShopPrimary else Color.White
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

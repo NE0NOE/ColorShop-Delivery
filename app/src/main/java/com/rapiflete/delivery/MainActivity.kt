@@ -117,6 +117,8 @@ class MainActivity : ComponentActivity() {
                                             onCustomerNoteChanged = viewModel::onCustomerNoteChanged,
                                             onCustomerPhoneChanged = viewModel::onCustomerPhoneChanged,
                                             onProductAmountChanged = viewModel::onProductAmountChanged,
+                                            onPartialTransferAmountChanged = viewModel::onPartialTransferAmountChanged,
+                                            onPartialCashAmountChanged = viewModel::onPartialCashAmountChanged,
                                             onOrderCommentsChanged = viewModel::onOrderCommentsChanged,
                                             onApproximateDeliveryTimeChanged = viewModel::onApproximateDeliveryTimeChanged,
                                             onReceiptPhotoSelected = viewModel::onReceiptPhotoSelected,

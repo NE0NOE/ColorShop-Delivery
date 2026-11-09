@@ -12,6 +12,7 @@ import com.rapiflete.delivery.model.SpecialZoneRule
 import com.rapiflete.delivery.model.StoreAndPricingConfig
 import com.rapiflete.delivery.model.SurchargeType
 import com.rapiflete.delivery.model.TransferBankType
+import com.rapiflete.delivery.model.calculateMixedPaymentSettlement
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -387,12 +388,16 @@ object RoutingAndFareCalculator {
         transferBank: TransferBankType = TransferBankType.BAC,
         productAmount: Double = 0.0,
         isPaymentPendingOnDelivery: Boolean = false,
-        receiptCode: String = ""
+        receiptCode: String = "",
+        partialTransferAmount: Double = 0.0
     ): String {
         if (config.customerMessageTemplate.isNotBlank()) {
             val cur = config.currencySymbol
             val deliveryFee = quote.effectiveTotal
             val grandTotal = productAmount + deliveryFee
+            val mixed = if (paymentMethod == PaymentMethodType.MIXED) {
+                calculateMixedPaymentSettlement(productAmount, deliveryFee, partialTransferAmount)
+            } else null
             val mapUrl = destination.coordinate.toStaticGoogleMapsUrl()
             val destLabelClean = destination.label
                 .replace("congelada", "", ignoreCase = true)
@@ -428,10 +433,18 @@ object RoutingAndFareCalculator {
                     } else {
                         "POS / Tarjeta - *Ya cobrado previamente*"
                     }
+                    PaymentMethodType.MIXED -> {
+                        val m = mixed ?: calculateMixedPaymentSettlement(productAmount, deliveryFee, partialTransferAmount)
+                        if (isPaymentPendingOnDelivery) {
+                            "Pago Mixto / Parcial: Transferencia (${transferBank.displayName}: ${formatMoney(m.transferAmount, cur)}, *pendiente al recibir*) + Efectivo (${formatMoney(m.cashToCollect, cur)})"
+                        } else {
+                            "Pago Mixto / Parcial: Transferencia (${transferBank.displayName}: ${formatMoney(m.transferAmount, cur)}, *acreditada*) + Efectivo al recibir (${formatMoney(m.cashToCollect, cur)})"
+                        }
+                    }
                 }
             } else ""
 
-            val bankText = if (paymentMethod == PaymentMethodType.TRANSFER) transferBank.displayName else ""
+            val bankText = if (paymentMethod == PaymentMethodType.TRANSFER || paymentMethod == PaymentMethodType.MIXED) transferBank.displayName else ""
 
             val incText = if (quote.selectedZoneName != null) {
                 " (Zona ${quote.selectedZoneName}, radio ${String.format(Locale.US, "%.1f", quote.includedKm)} km)"
@@ -477,7 +490,10 @@ object RoutingAndFareCalculator {
                 formatMoney(deliveryFee, cur)
             }
 
-            val totalString = if (productAmount > 0.0) {
+            val totalString = if (paymentMethod == PaymentMethodType.MIXED) {
+                val m = mixed ?: calculateMixedPaymentSettlement(productAmount, deliveryFee, partialTransferAmount)
+                "GRAN TOTAL: ${formatMoney(grandTotal, cur)}\n💳 *Abono por Transferencia (${transferBank.displayName}):* -${formatMoney(m.transferAmount, cur)}\n💵 *SALDO A PAGAR EN EFECTIVO AL RECIBIR:* ${formatMoney(m.cashToCollect, cur)}"
+            } else if (productAmount > 0.0) {
                 "GRAN TOTAL A PAGAR: ${formatMoney(grandTotal, cur)}"
             } else {
                 "TOTAL ENVÍO: ${formatMoney(deliveryFee, cur)}"
@@ -494,6 +510,8 @@ object RoutingAndFareCalculator {
                 "mercaderia" to if (productAmount > 0.0) formatMoney(productAmount, cur) else "",
                 "tarifa_envio" to fareString,
                 "total" to totalString,
+                "abono_transferencia" to (mixed?.let { formatMoney(it.transferAmount, cur) } ?: ""),
+                "efectivo_pendiente" to (mixed?.let { formatMoney(it.cashToCollect, cur) } ?: ""),
                 "metodo_pago" to paymentMethodText,
                 "banco" to bankText,
                 "repartidor" to courierName,
@@ -560,6 +578,14 @@ object RoutingAndFareCalculator {
                 } else {
                     "POS / Tarjeta - *Ya cobrado previamente*"
                 }
+                PaymentMethodType.MIXED -> {
+                    val m = calculateMixedPaymentSettlement(productAmount, deliveryFee, partialTransferAmount)
+                    if (isPaymentPendingOnDelivery) {
+                        "Pago Mixto / Parcial: Transferencia (${transferBank.displayName}: ${formatMoney(m.transferAmount, cur)}, *pendiente al recibir*) + Efectivo (${formatMoney(m.cashToCollect, cur)})"
+                    } else {
+                        "Pago Mixto / Parcial: Transferencia (${transferBank.displayName}: ${formatMoney(m.transferAmount, cur)}, *acreditada*) + Efectivo al recibir (${formatMoney(m.cashToCollect, cur)})"
+                    }
+                }
             }
             sb.appendLine("💳 *Método de pago:* $paymentText")
         }
@@ -600,7 +626,16 @@ object RoutingAndFareCalculator {
                 sb.appendLine("• Cargo adicional acordado: +${formatMoney(-diff, cur)}")
             }
         }
-        if (productAmount > 0.0) {
+        if (paymentMethod == PaymentMethodType.MIXED) {
+            val m = calculateMixedPaymentSettlement(productAmount, deliveryFee, partialTransferAmount)
+            if (productAmount > 0.0) {
+                sb.appendLine("🛵 *Subtotal Envío:* ${formatMoney(deliveryFee, cur)}")
+            }
+            sb.appendLine("────────────────────")
+            sb.appendLine("💰 *GRAN TOTAL: ${formatMoney(grandTotal, cur)}*")
+            sb.appendLine("💳 *Abono por Transferencia (${transferBank.displayName}):* -${formatMoney(m.transferAmount, cur)}")
+            sb.appendLine("💵 *SALDO A PAGAR EN EFECTIVO AL RECIBIR:* ${formatMoney(m.cashToCollect, cur)}")
+        } else if (productAmount > 0.0) {
             sb.appendLine("🛵 *Subtotal Envío:* ${formatMoney(deliveryFee, cur)}")
             sb.appendLine("────────────────────")
             sb.appendLine("💰 *GRAN TOTAL A PAGAR: ${formatMoney(grandTotal, cur)}*")
@@ -624,7 +659,8 @@ object RoutingAndFareCalculator {
         productAmount: Double,
         deliveryFee: Double,
         currencySymbol: String,
-        isPaymentPendingOnDelivery: Boolean = false
+        isPaymentPendingOnDelivery: Boolean = false,
+        partialTransferAmount: Double = 0.0
     ): String {
         val cur = currencySymbol
         val grandTotal = productAmount + deliveryFee
@@ -644,6 +680,17 @@ object RoutingAndFareCalculator {
                     "💳 POS Datáfono PENDIENTE: Cobrar al cliente ${formatMoney(grandTotal, cur)} con datáfono de la tienda al entregar. ColorShop te pagará tu tarifa de envío (${formatMoney(deliveryFee, cur)}) hoy mismo o mañana."
                 } else {
                     "💳 POS Tarjeta: Cliente ya pagó con datáfono previamente en tienda (Cobro al cliente: ${formatMoney(0.0, cur)}). Tienda ColorShop te pagará tu tarifa de envío (${formatMoney(deliveryFee, cur)}) hoy mismo o mañana."
+                }
+            }
+            PaymentMethodType.MIXED -> {
+                val mixed = calculateMixedPaymentSettlement(productAmount, deliveryFee, partialTransferAmount)
+                val transferStatus = if (isPaymentPendingOnDelivery) "PENDIENTE (verificar comprobante)" else "ya acreditada"
+                if (mixed.storeOwedByDriver > 0.009) {
+                    "🔄 Pago Mixto (${transferBank.displayName} $transferStatus: ${formatMoney(mixed.transferAmount, cur)} + Efectivo: ${formatMoney(mixed.cashToCollect, cur)}): Cobrar en efectivo ${formatMoney(mixed.cashToCollect, cur)} al cliente. Te descuentas tu envío completo (${formatMoney(deliveryFee, cur)}) y depositas a tienda el restante de ${formatMoney(mixed.storeOwedByDriver, cur)}."
+                } else if (mixed.storeOwedByDriver <= 0.009 && mixed.driverPendingFromStore <= 0.009) {
+                    "🔄 Pago Mixto (${transferBank.displayName} $transferStatus: ${formatMoney(mixed.transferAmount, cur)} + Efectivo: ${formatMoney(mixed.cashToCollect, cur)}): Cobrar en efectivo ${formatMoney(mixed.cashToCollect, cur)} al cliente. Te quedas con ese monto exacto para cubrir tu envío (${formatMoney(deliveryFee, cur)}). Cuentas saldadas (Depositar a tienda: ${formatMoney(0.0, cur)})."
+                } else {
+                    "🔄 Pago Mixto (${transferBank.displayName} $transferStatus: ${formatMoney(mixed.transferAmount, cur)} + Efectivo: ${formatMoney(mixed.cashToCollect, cur)}): Cobrar en efectivo ${formatMoney(mixed.cashToCollect, cur)} al cliente y conservarlo como parte de tu envío. La tienda ColorShop te pagará el saldo restante de tu envío (${formatMoney(mixed.driverPendingFromStore, cur)})."
                 }
             }
         }
@@ -669,7 +716,8 @@ object RoutingAndFareCalculator {
         transferBank: TransferBankType = TransferBankType.BAC,
         courier: CourierDriver? = null,
         isPaymentPendingOnDelivery: Boolean = false,
-        receiptCode: String = ""
+        receiptCode: String = "",
+        partialTransferAmount: Double = 0.0
     ): String {
         if (config.driverDispatchTemplate.isNotBlank()) {
             val cur = config.currencySymbol
@@ -701,9 +749,14 @@ object RoutingAndFareCalculator {
                 } else {
                     "POS / Tarjeta - Ya cobrado"
                 }
+                PaymentMethodType.MIXED -> if (isPaymentPendingOnDelivery) {
+                    "Pago Mixto (Transf. ${transferBank.displayName} pendiente + Efectivo)"
+                } else {
+                    "Pago Mixto (Transf. ${transferBank.displayName} acreditada + Efectivo)"
+                }
             }
 
-            val bankText = if (paymentMethod == PaymentMethodType.TRANSFER) transferBank.displayName else ""
+            val bankText = if (paymentMethod == PaymentMethodType.TRANSFER || paymentMethod == PaymentMethodType.MIXED) transferBank.displayName else ""
 
             val settlementText = when (paymentMethod) {
                 PaymentMethodType.CASH -> {
@@ -723,6 +776,16 @@ object RoutingAndFareCalculator {
                         "La tienda ColorShop te pagará tu tarifa de envío (${formatMoney(deliveryFee, cur)}) hoy mismo o mañana."
                     }
                 }
+                PaymentMethodType.MIXED -> {
+                    val mixed = calculateMixedPaymentSettlement(productAmount, deliveryFee, partialTransferAmount)
+                    if (mixed.storeOwedByDriver > 0.009) {
+                        "Cobras ${formatMoney(mixed.cashToCollect, cur)} en efectivo al cliente. Te descuentas tu envío completo (${formatMoney(deliveryFee, cur)}) y depositas a tienda el restante: *${formatMoney(mixed.storeOwedByDriver, cur)}*."
+                    } else if (mixed.storeOwedByDriver <= 0.009 && mixed.driverPendingFromStore <= 0.009) {
+                        "Cobras ${formatMoney(mixed.cashToCollect, cur)} en efectivo al cliente y te lo quedas para cubrir tu envío (${formatMoney(deliveryFee, cur)}). No debes depositar efectivo a tienda (${formatMoney(0.0, cur)})."
+                    } else {
+                        "Cobras ${formatMoney(mixed.cashToCollect, cur)} en efectivo al cliente como parte de tu envío (${formatMoney(deliveryFee, cur)}). No depositas nada a tienda y ColorShop te pagará el saldo restante de tu envío: *${formatMoney(mixed.driverPendingFromStore, cur)}*."
+                    }
+                }
             }
 
             val totalText = when (paymentMethod) {
@@ -739,6 +802,14 @@ object RoutingAndFareCalculator {
                         "${formatMoney(grandTotal, cur)} (POS Datáfono PENDIENTE)"
                     } else {
                         "${formatMoney(0.0, cur)} (Ya cobrado previamente con POS en tienda)"
+                    }
+                }
+                PaymentMethodType.MIXED -> {
+                    val mixed = calculateMixedPaymentSettlement(productAmount, deliveryFee, partialTransferAmount)
+                    if (isPaymentPendingOnDelivery) {
+                        "${formatMoney(mixed.cashToCollect, cur)} en Efectivo + Verificar Transf. ${transferBank.displayName} por ${formatMoney(mixed.transferAmount, cur)} (Total pedido: ${formatMoney(grandTotal, cur)})"
+                    } else {
+                        "${formatMoney(mixed.cashToCollect, cur)} EN EFECTIVO (Abonado por Transf. ${transferBank.displayName}: ${formatMoney(mixed.transferAmount, cur)} de ${formatMoney(grandTotal, cur)})"
                     }
                 }
             }
@@ -825,6 +896,22 @@ object RoutingAndFareCalculator {
                     sb.appendLine("• *Cobro al Cliente:* ${formatMoney(0.0, cur)} (Ya cobrado previamente con POS en tienda)")
                     sb.appendLine("👉 *Liquidación:* La tienda ColorShop te pagará tu tarifa de envío (${formatMoney(deliveryFee, cur)}) hoy mismo o mañana.")
                 }
+            }
+            PaymentMethodType.MIXED -> {
+                val mixed = calculateMixedPaymentSettlement(productAmount, deliveryFee, partialTransferAmount)
+                if (isPaymentPendingOnDelivery) {
+                    sb.appendLine("• *Cobro al Cliente:* ${formatMoney(mixed.cashToCollect, cur)} en Efectivo + Verificar Transf. ${transferBank.displayName} por ${formatMoney(mixed.transferAmount, cur)} (Total pedido: ${formatMoney(grandTotal, cur)})")
+                } else {
+                    sb.appendLine("• *Cobro al Cliente:* ${formatMoney(mixed.cashToCollect, cur)} EN EFECTIVO (Abonado por Transf. ${transferBank.displayName}: ${formatMoney(mixed.transferAmount, cur)} de ${formatMoney(grandTotal, cur)})")
+                }
+                val settlementDesc = if (mixed.storeOwedByDriver > 0.009) {
+                    "Cobras ${formatMoney(mixed.cashToCollect, cur)} en efectivo al cliente. Te descuentas tu envío completo (${formatMoney(deliveryFee, cur)}) y depositas a tienda el restante: *${formatMoney(mixed.storeOwedByDriver, cur)}*."
+                } else if (mixed.storeOwedByDriver <= 0.009 && mixed.driverPendingFromStore <= 0.009) {
+                    "Cobras ${formatMoney(mixed.cashToCollect, cur)} en efectivo al cliente y te lo quedas para cubrir tu envío (${formatMoney(deliveryFee, cur)}). No debes depositar efectivo a tienda (${formatMoney(0.0, cur)})."
+                } else {
+                    "Cobras ${formatMoney(mixed.cashToCollect, cur)} en efectivo al cliente como parte de tu envío (${formatMoney(deliveryFee, cur)}). No depositas nada a tienda y ColorShop te pagará el saldo restante de tu envío: *${formatMoney(mixed.driverPendingFromStore, cur)}*."
+                }
+                sb.appendLine("👉 *Liquidación:* $settlementDesc")
             }
         }
         return sb.toString().trimEnd()

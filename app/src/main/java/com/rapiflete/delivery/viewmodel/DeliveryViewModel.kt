@@ -18,6 +18,7 @@ import com.rapiflete.delivery.model.SavedQuoteRecord
 import com.rapiflete.delivery.model.SpecialZoneRule
 import com.rapiflete.delivery.model.StoreAndPricingConfig
 import com.rapiflete.delivery.model.TransferBankType
+import com.rapiflete.delivery.model.calculateMixedPaymentSettlement
 import com.rapiflete.delivery.util.LocationParserAndFreezer
 import com.rapiflete.delivery.util.RoutingAndFareCalculator
 import com.rapiflete.delivery.util.ZoneDetector
@@ -61,6 +62,9 @@ data class DeliveryUiState(
     val zones: List<SpecialZoneRule> = emptyList(),
     val productAmount: Double = 0.0,
     val productAmountInput: String = "",
+    val partialTransferAmount: Double = 0.0,
+    val partialTransferAmountInput: String = "",
+    val partialCashAmountInput: String = "",
     val isLoadingRouteOrLink: Boolean = false,
     val showPreferentialRateDialog: Boolean = false,
     val suggestedPreferentialRate: Double = 0.0,
@@ -137,6 +141,9 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
                 receiptPhotoUri = "",
                 productAmount = 0.0,
                 productAmountInput = "",
+                partialTransferAmount = 0.0,
+                partialTransferAmountInput = "",
+                partialCashAmountInput = "",
                 manualAdjustment = 0.0,
                 customTotalOverride = null,
                 frozenDestination = null,
@@ -165,10 +172,22 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
 
     fun onProductAmountChanged(newInput: String) {
         val parsed = newInput.trim().toDoubleOrNull() ?: 0.0
-        _uiState.update {
-            it.copy(
+        _uiState.update { state ->
+            val deliveryFee = state.quoteBreakdown?.effectiveTotal ?: 0.0
+            val grandTotal = (parsed + deliveryFee).coerceAtLeast(0.0)
+            val clampedTransfer = if (state.selectedPaymentMethod == PaymentMethodType.MIXED && grandTotal > 0.0) {
+                state.partialTransferAmount.coerceIn(0.0, grandTotal)
+            } else {
+                state.partialTransferAmount
+            }
+            val cashRemaining = (grandTotal - clampedTransfer).coerceAtLeast(0.0)
+            state.copy(
                 productAmountInput = newInput,
-                productAmount = parsed
+                productAmount = parsed,
+                partialTransferAmount = clampedTransfer,
+                partialCashAmountInput = if (state.selectedPaymentMethod == PaymentMethodType.MIXED && grandTotal > 0.0) {
+                    formatCleanAmount(cashRemaining)
+                } else state.partialCashAmountInput
             )
         }
     }
@@ -253,12 +272,65 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             PaymentMethodType.CASH -> true
             PaymentMethodType.POS -> true
             PaymentMethodType.TRANSFER -> false
+            PaymentMethodType.MIXED -> false
         }
-        _uiState.update {
-            it.copy(
+        _uiState.update { state ->
+            val deliveryFee = state.quoteBreakdown?.effectiveTotal ?: 0.0
+            val grandTotal = state.productAmount + deliveryFee
+            // Si elige MIXED y aún no tiene monto transferido, si hay mercadería pre-sugerir el monto de mercadería (caso común: mercadería por transferencia + envío en efectivo)
+            val initialTransfer = if (method == PaymentMethodType.MIXED && state.partialTransferAmount <= 0.0 && state.productAmount > 0.0) {
+                state.productAmount
+            } else {
+                state.partialTransferAmount.coerceIn(0.0, grandTotal.coerceAtLeast(0.0))
+            }
+            val cashRemaining = (grandTotal - initialTransfer).coerceAtLeast(0.0)
+            state.copy(
                 selectedPaymentMethod = method,
-                isPaymentPendingOnDelivery = pending
+                isPaymentPendingOnDelivery = pending,
+                partialTransferAmount = if (method == PaymentMethodType.MIXED) initialTransfer else state.partialTransferAmount,
+                partialTransferAmountInput = if (method == PaymentMethodType.MIXED && initialTransfer > 0.0) formatCleanAmount(initialTransfer) else state.partialTransferAmountInput,
+                partialCashAmountInput = if (method == PaymentMethodType.MIXED && grandTotal > 0.0) formatCleanAmount(cashRemaining) else state.partialCashAmountInput
             )
+        }
+    }
+
+    fun onPartialTransferAmountChanged(newInput: String) {
+        val clean = newInput.replace(",", ".").trim()
+        val parsed = clean.toDoubleOrNull() ?: 0.0
+        _uiState.update { state ->
+            val deliveryFee = state.quoteBreakdown?.effectiveTotal ?: 0.0
+            val grandTotal = (state.productAmount + deliveryFee).coerceAtLeast(0.0)
+            val clampedTransfer = if (grandTotal > 0.0) parsed.coerceIn(0.0, grandTotal) else parsed.coerceAtLeast(0.0)
+            val cashRemaining = (grandTotal - clampedTransfer).coerceAtLeast(0.0)
+            state.copy(
+                partialTransferAmountInput = newInput,
+                partialTransferAmount = clampedTransfer,
+                partialCashAmountInput = if (grandTotal > 0.0) formatCleanAmount(cashRemaining) else ""
+            )
+        }
+    }
+
+    fun onPartialCashAmountChanged(newInput: String) {
+        val clean = newInput.replace(",", ".").trim()
+        val parsed = clean.toDoubleOrNull() ?: 0.0
+        _uiState.update { state ->
+            val deliveryFee = state.quoteBreakdown?.effectiveTotal ?: 0.0
+            val grandTotal = (state.productAmount + deliveryFee).coerceAtLeast(0.0)
+            val clampedCash = if (grandTotal > 0.0) parsed.coerceIn(0.0, grandTotal) else parsed.coerceAtLeast(0.0)
+            val transferPortion = (grandTotal - clampedCash).coerceAtLeast(0.0)
+            state.copy(
+                partialCashAmountInput = newInput,
+                partialTransferAmount = transferPortion,
+                partialTransferAmountInput = if (grandTotal > 0.0) formatCleanAmount(transferPortion) else ""
+            )
+        }
+    }
+
+    private fun formatCleanAmount(amount: Double): String {
+        return if (amount % 1.0 == 0.0) {
+            String.format(Locale.US, "%.0f", amount)
+        } else {
+            String.format(Locale.US, "%.2f", amount)
         }
     }
 
@@ -639,17 +711,27 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
         val productAmt = state.productAmount
         val totalAmount = productAmt + deliveryFee
 
+        val mixedSettlement = calculateMixedPaymentSettlement(
+            productAmount = productAmt,
+            deliveryFee = deliveryFee,
+            partialTransferAmount = state.partialTransferAmount
+        )
+
         val settlementNote = RoutingAndFareCalculator.buildDriverSettlementNote(
             paymentMethod = state.selectedPaymentMethod,
             transferBank = state.selectedTransferBank,
             productAmount = productAmt,
             deliveryFee = deliveryFee,
             currencySymbol = state.config.currencySymbol,
-            isPaymentPendingOnDelivery = state.isPaymentPendingOnDelivery
+            isPaymentPendingOnDelivery = state.isPaymentPendingOnDelivery,
+            partialTransferAmount = state.partialTransferAmount
         )
 
         val surchargesList = mutableListOf<String>()
         if (productAmt > 0) surchargesList.add("Mercadería: ${state.config.currencySymbol}${productAmt.toInt()}")
+        if (state.selectedPaymentMethod == PaymentMethodType.MIXED) {
+            surchargesList.add("Abono Transf: ${state.config.currencySymbol}${mixedSettlement.transferAmount.toInt()} / Efectivo: ${state.config.currencySymbol}${mixedSettlement.cashToCollect.toInt()}")
+        }
         if (quote.offHoursApplied) surchargesList.add("Recargo nocturno")
         if (quote.holidayApplied) surchargesList.add("Día festivo")
         if (quote.rainApplied) surchargesList.add("Lluvia/Demanda")
@@ -667,6 +749,18 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
         val now = Date()
         val dateIsoFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
         val timeFormat = SimpleDateFormat("hh:mm a", Locale.US)
+
+        val isAutoPaidInCash = when (state.selectedPaymentMethod) {
+            PaymentMethodType.CASH -> true
+            PaymentMethodType.MIXED -> mixedSettlement.isDriverFullyPaidByCash
+            PaymentMethodType.TRANSFER, PaymentMethodType.POS -> false
+        }
+
+        val autoPaidLabel = when (state.selectedPaymentMethod) {
+            PaymentMethodType.CASH -> "Auto-descontado en efectivo"
+            PaymentMethodType.MIXED -> if (mixedSettlement.isDriverFullyPaidByCash) "Auto-descontado en efectivo (Pago Mixto)" else ""
+            PaymentMethodType.TRANSFER, PaymentMethodType.POS -> ""
+        }
 
         val record = SavedQuoteRecord(
             id = UUID.randomUUID().toString(),
@@ -686,6 +780,7 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
                 PaymentMethodType.CASH -> "Cobro Efectivo: ${state.config.currencySymbol} ${totalAmount.toInt()}"
                 PaymentMethodType.TRANSFER -> "Transf. ${state.selectedTransferBank.displayName} (${state.config.currencySymbol} ${totalAmount.toInt()})"
                 PaymentMethodType.POS -> "POS Tarjeta (${state.config.currencySymbol} ${totalAmount.toInt()})"
+                PaymentMethodType.MIXED -> "Transf. ${state.selectedTransferBank.displayName} ${state.config.currencySymbol}${mixedSettlement.transferAmount.toInt()} + Efectivo ${state.config.currencySymbol}${mixedSettlement.cashToCollect.toInt()}"
             },
             receiptId = "#${state.currentReceiptCode}",
             destinationLat = dest.coordinate.latitude,
@@ -702,9 +797,11 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
             currencySymbol = state.config.currencySymbol,
             orderStatus = OrderStatus.EN_RUTA,
             driverSettlementNote = settlementNote,
-            isDriverPaid = state.selectedPaymentMethod == PaymentMethodType.CASH,
-            driverPaidAt = if (state.selectedPaymentMethod == PaymentMethodType.CASH) "Auto-descontado en efectivo" else "",
-            isPaymentPendingOnDelivery = state.isPaymentPendingOnDelivery
+            isDriverPaid = isAutoPaidInCash,
+            driverPaidAt = autoPaidLabel,
+            isPaymentPendingOnDelivery = state.isPaymentPendingOnDelivery,
+            partialTransferAmount = if (state.selectedPaymentMethod == PaymentMethodType.MIXED) mixedSettlement.transferAmount else 0.0,
+            partialCashAmount = if (state.selectedPaymentMethod == PaymentMethodType.MIXED) mixedSettlement.cashToCollect else 0.0
         )
 
         val updatedHistory = listOf(record) + state.history
@@ -765,6 +862,9 @@ class DeliveryViewModel(application: Application) : AndroidViewModel(application
                 receiptPhotoUri = record.receiptPhotoUri,
                 productAmount = record.productAmount,
                 productAmountInput = if (record.productAmount > 0) String.format(Locale.US, "%.0f", record.productAmount) else "",
+                partialTransferAmount = record.effectiveTransferAmount,
+                partialTransferAmountInput = if (record.paymentMethod == PaymentMethodType.MIXED && record.effectiveTransferAmount > 0) formatCleanAmount(record.effectiveTransferAmount) else "",
+                partialCashAmountInput = if (record.paymentMethod == PaymentMethodType.MIXED && record.effectiveCashToCollect > 0) formatCleanAmount(record.effectiveCashToCollect) else "",
                 selectedPaymentMethod = record.paymentMethod,
                 selectedTransferBank = restoredBank,
                 selectedCourier = restoredCourier,

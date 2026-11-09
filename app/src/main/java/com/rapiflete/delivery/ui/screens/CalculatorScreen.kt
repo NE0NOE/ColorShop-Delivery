@@ -124,6 +124,7 @@ import com.rapiflete.delivery.model.PaymentMethodType
 import com.rapiflete.delivery.model.ShareOutputFormat
 import com.rapiflete.delivery.model.SpecialZoneRule
 import com.rapiflete.delivery.model.TransferBankType
+import com.rapiflete.delivery.model.calculateMixedPaymentSettlement
 import com.rapiflete.delivery.ui.components.ColorShopButterflyLogo
 import com.rapiflete.delivery.ui.components.ColorShopTopBar
 import com.rapiflete.delivery.ui.components.DeliveryOsmMapView
@@ -156,6 +157,8 @@ fun CalculatorScreen(
     onCustomerNoteChanged: (String) -> Unit,
     onCustomerPhoneChanged: (String) -> Unit,
     onProductAmountChanged: (String) -> Unit = {},
+    onPartialTransferAmountChanged: (String) -> Unit = {},
+    onPartialCashAmountChanged: (String) -> Unit = {},
     onOrderCommentsChanged: (String) -> Unit,
     onApproximateDeliveryTimeChanged: (String) -> Unit,
     onReceiptPhotoSelected: (String) -> Unit,
@@ -244,7 +247,8 @@ fun CalculatorScreen(
                 transferBank = uiState.selectedTransferBank,
                 courier = uiState.selectedCourier,
                 isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery,
-                receiptCode = receiptCode
+                receiptCode = receiptCode,
+                partialTransferAmount = uiState.partialTransferAmount
             )
             copyToClipboard(context, "Despacho ColorShop", dispatchText)
             if (cfg.defaultShareFormat == ShareOutputFormat.IMAGE_RECEIPT) {
@@ -263,7 +267,8 @@ fun CalculatorScreen(
                     orderStatus = OrderStatus.EN_RUTA,
                     isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery,
                     customTemplate = cfg.driverDispatchTemplate,
-                    dispatchNumber = receiptCode
+                    dispatchNumber = receiptCode,
+                    partialTransferAmount = uiState.partialTransferAmount
                 )
                 val imageUri = ReceiptImageGenerator.saveBitmapToShareCache(
                     context,
@@ -1094,7 +1099,7 @@ fun CalculatorScreen(
                     }
 
                     // Desglose de Productos y Envío por separado + Gran Total
-                    if (uiState.productAmount > 0.0) {
+                    if (uiState.productAmount > 0.0 || uiState.selectedPaymentMethod == PaymentMethodType.MIXED) {
                         Surface(
                             color = ColorShopSurfaceLow.copy(alpha = 0.6f),
                             shape = RoundedCornerShape(14.dp),
@@ -1141,6 +1146,47 @@ fun CalculatorScreen(
                                         fontWeight = FontWeight.ExtraBold,
                                         color = ColorShopPrimary
                                     )
+                                }
+                                if (uiState.selectedPaymentMethod == PaymentMethodType.MIXED) {
+                                    val mixed = calculateMixedPaymentSettlement(
+                                        uiState.productAmount,
+                                        quote.effectiveTotal,
+                                        uiState.partialTransferAmount
+                                    )
+                                    HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            "🏦 Abono por Transferencia (${uiState.selectedTransferBank.displayName}):",
+                                            fontSize = 11.sp,
+                                            color = ColorShopMutedPlum
+                                        )
+                                        Text(
+                                            "- $cur ${String.format(Locale.US, "%.2f", mixed.transferAmount)}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF2E7D32)
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            "💵 Efectivo a Cobrar en Entrega:",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = ColorShopDeepPlum
+                                        )
+                                        Text(
+                                            "$cur ${String.format(Locale.US, "%.2f", mixed.cashToCollect)}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = ColorShopPrimary
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1385,28 +1431,52 @@ fun CalculatorScreen(
                                     )
                                 }
 
-                                // Chips: Efectivo, Transferencia, POS Tarjeta
-                                Row(
+                                // Chips: Efectivo, Transferencia, POS Tarjeta, Mixto / Parcial en 2 filas limpias
+                                Column(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    PaymentMethodType.entries.forEach { method ->
-                                        val isSelected = uiState.selectedPaymentMethod == method
-                                        FilterChip(
-                                            selected = isSelected,
-                                            onClick = { onSelectPaymentMethod(method) },
-                                            label = { Text(method.badgeLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
-                                            modifier = Modifier.weight(1f),
-                                            colors = FilterChipDefaults.filterChipColors(
-                                                selectedContainerColor = ColorShopMagenta,
-                                                selectedLabelColor = Color.White
+                                    val entries = PaymentMethodType.entries
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        entries.take(2).forEach { method ->
+                                            val isSelected = uiState.selectedPaymentMethod == method
+                                            FilterChip(
+                                                selected = isSelected,
+                                                onClick = { onSelectPaymentMethod(method) },
+                                                label = { Text(method.badgeLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                                modifier = Modifier.weight(1f),
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = ColorShopMagenta,
+                                                    selectedLabelColor = Color.White
+                                                )
                                             )
-                                        )
+                                        }
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        entries.drop(2).forEach { method ->
+                                            val isSelected = uiState.selectedPaymentMethod == method
+                                            FilterChip(
+                                                selected = isSelected,
+                                                onClick = { onSelectPaymentMethod(method) },
+                                                label = { Text(method.badgeLabel, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                                modifier = Modifier.weight(1f),
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = ColorShopMagenta,
+                                                    selectedLabelColor = Color.White
+                                                )
+                                            )
+                                        }
                                     }
                                 }
 
-                                // Si es Transferencia, mostrar los bancos (BAC, Lafise, Banpro, Ficohsa)
-                                if (uiState.selectedPaymentMethod == PaymentMethodType.TRANSFER) {
+                                // Si es Transferencia o Pago Mixto, mostrar los bancos (BAC, Lafise, Banpro, Ficohsa)
+                                if (uiState.selectedPaymentMethod == PaymentMethodType.TRANSFER || uiState.selectedPaymentMethod == PaymentMethodType.MIXED) {
                                     HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
                                     Text(
                                         text = "Banco receptor para la transferencia:",
@@ -1450,7 +1520,7 @@ fun CalculatorScreen(
                                         FilterChip(
                                             selected = !uiState.isPaymentPendingOnDelivery,
                                             onClick = { onSetPaymentPendingOnDelivery(false) },
-                                            label = { Text("✅ Ya Acreditada (C$ 0 al recibir)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                            label = { Text("✅ Transf. Acreditada", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                                             colors = FilterChipDefaults.filterChipColors(
                                                 selectedContainerColor = Color(0xFF2E7D32),
                                                 selectedLabelColor = Color.White
@@ -1459,12 +1529,151 @@ fun CalculatorScreen(
                                         FilterChip(
                                             selected = uiState.isPaymentPendingOnDelivery,
                                             onClick = { onSetPaymentPendingOnDelivery(true) },
-                                            label = { Text("⏳ Transferir al Recibir (Contra Entrega)", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                                            label = { Text("⏳ Transf. al Recibir", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                                             colors = FilterChipDefaults.filterChipColors(
                                                 selectedContainerColor = Color(0xFFE65100),
                                                 selectedLabelColor = Color.White
                                             )
                                         )
+                                    }
+                                }
+
+                                // Si es Pago Mixto, mostrar desglose dedicado (Transferencia + Efectivo)
+                                if (uiState.selectedPaymentMethod == PaymentMethodType.MIXED) {
+                                    HorizontalDivider(color = ColorShopSurfaceHigh.copy(alpha = 0.6f))
+                                    Text(
+                                        text = "Desglose de Pago Mixto (Transferencia + Efectivo):",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ColorShopDeepPlum
+                                    )
+
+                                    // Quick preset chips (cuando grandTotal > 0)
+                                    if (grandTotal > 0.0) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            if (uiState.productAmount > 0.0 && quote != null) {
+                                                FilterChip(
+                                                    selected = kotlin.math.abs(uiState.partialTransferAmount - uiState.productAmount) < 0.01,
+                                                    onClick = { onPartialTransferAmountChanged(uiState.productAmount.toInt().toString()) },
+                                                    label = {
+                                                        Text(
+                                                            "🛍️ Mercadería Transf. (${cur}${uiState.productAmount.toInt()}) + Envío Efectivo (${cur}${quote.effectiveTotal.toInt()})",
+                                                            fontSize = 10.sp
+                                                        )
+                                                    },
+                                                    colors = FilterChipDefaults.filterChipColors(
+                                                        selectedContainerColor = ColorShopPrimary,
+                                                        selectedLabelColor = Color.White
+                                                    )
+                                                )
+                                                FilterChip(
+                                                    selected = kotlin.math.abs(uiState.partialTransferAmount - quote.effectiveTotal) < 0.01,
+                                                    onClick = { onPartialTransferAmountChanged(quote.effectiveTotal.toInt().toString()) },
+                                                    label = {
+                                                        Text(
+                                                            "🛵 Envío Transf. (${cur}${quote.effectiveTotal.toInt()}) + Mercadería Efectivo (${cur}${uiState.productAmount.toInt()})",
+                                                            fontSize = 10.sp
+                                                        )
+                                                    },
+                                                    colors = FilterChipDefaults.filterChipColors(
+                                                        selectedContainerColor = ColorShopPrimary,
+                                                        selectedLabelColor = Color.White
+                                                    )
+                                                )
+                                            }
+                                            FilterChip(
+                                                selected = kotlin.math.abs(uiState.partialTransferAmount - (grandTotal / 2)) < 0.01,
+                                                onClick = { onPartialTransferAmountChanged((grandTotal / 2).toInt().toString()) },
+                                                label = {
+                                                    Text(
+                                                        "Mitad / 50% (${cur}${(grandTotal / 2).toInt()})",
+                                                        fontSize = 10.sp
+                                                    )
+                                                },
+                                                colors = FilterChipDefaults.filterChipColors(
+                                                    selectedContainerColor = ColorShopPrimary,
+                                                    selectedLabelColor = Color.White
+                                                )
+                                            )
+                                        }
+                                    }
+
+                                    // Dos textfields lado a lado
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedTextField(
+                                            value = uiState.partialTransferAmountInput,
+                                            onValueChange = onPartialTransferAmountChanged,
+                                            label = { Text("Transf. / Depósito ($cur)", fontSize = 10.sp) },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = ColorShopPrimary,
+                                                unfocusedBorderColor = ColorShopSurfaceHigh
+                                            ),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        OutlinedTextField(
+                                            value = uiState.partialCashAmountInput,
+                                            onValueChange = onPartialCashAmountChanged,
+                                            label = { Text("Efectivo a Cobrar ($cur)", fontSize = 10.sp) },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = ColorShopPrimary,
+                                                unfocusedBorderColor = ColorShopSurfaceHigh
+                                            ),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+
+                                    // Resumen visual si quote != null
+                                    if (quote != null) {
+                                        val mixed = calculateMixedPaymentSettlement(
+                                            uiState.productAmount,
+                                            quote.effectiveTotal,
+                                            uiState.partialTransferAmount
+                                        )
+                                        Surface(
+                                            color = ColorShopSurfaceLow.copy(alpha = 0.7f),
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .border(1.dp, ColorShopPrimary.copy(alpha = 0.2f), RoundedCornerShape(10.dp))
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "💵 Motorizado cobra en efectivo: $cur ${String.format(Locale.US, "%.2f", mixed.cashToCollect)}",
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = ColorShopDeepPlum
+                                                )
+                                                val caseOutcomeText = when {
+                                                    mixed.storeOwedByDriver > 0.009 ->
+                                                        "✅ Se descuenta su envío ($cur ${mixed.deliveryFee.toInt()}) y DEBE DEPOSITAR A TIENDA: $cur ${String.format(Locale.US, "%.2f", mixed.storeOwedByDriver)}"
+                                                    mixed.driverPendingFromStore <= 0.009 ->
+                                                        "✅ Se queda con los $cur ${mixed.deliveryFee.toInt()} de su envío. Cuentas saldadas (Deposita $cur 0 a tienda)."
+                                                    else ->
+                                                        "⏳ Retiene $cur ${mixed.cashToCollect.toInt()} para su envío y TIENDA LE DEBE PAGAR: $cur ${String.format(Locale.US, "%.2f", mixed.driverPendingFromStore)}"
+                                                }
+                                                Text(
+                                                    text = caseOutcomeText,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = if (mixed.driverPendingFromStore > 0.009) Color(0xFFE65100) else Color(0xFF2E7D32)
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 
@@ -1514,7 +1723,8 @@ fun CalculatorScreen(
                                 productAmount = uiState.productAmount,
                                 deliveryFee = quote.effectiveTotal,
                                 currencySymbol = cur,
-                                isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery
+                                isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery,
+                                partialTransferAmount = uiState.partialTransferAmount
                             )
                             Surface(
                                 color = ColorShopSurfaceLow.copy(alpha = 0.5f),
@@ -1738,7 +1948,8 @@ fun CalculatorScreen(
                                 transferBank = uiState.selectedTransferBank,
                                 productAmount = uiState.productAmount,
                                 isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery,
-                                receiptCode = receiptCode
+                                receiptCode = receiptCode,
+                                partialTransferAmount = uiState.partialTransferAmount
                             )
                             copyToClipboard(context, "Cotización ColorShop", summary)
                             if (cfg.defaultShareFormat == ShareOutputFormat.IMAGE_RECEIPT) {
@@ -1757,7 +1968,8 @@ fun CalculatorScreen(
                                     orderStatus = OrderStatus.EN_RUTA,
                                     isPaymentPendingOnDelivery = uiState.isPaymentPendingOnDelivery,
                                     customTemplate = cfg.customerMessageTemplate,
-                                    receiptNumber = receiptCode
+                                    receiptNumber = receiptCode,
+                                    partialTransferAmount = uiState.partialTransferAmount
                                 )
                                 val imageUri = ReceiptImageGenerator.saveBitmapToShareCache(
                                     context,

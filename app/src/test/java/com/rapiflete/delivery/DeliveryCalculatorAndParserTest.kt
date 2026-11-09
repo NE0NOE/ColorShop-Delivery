@@ -11,6 +11,7 @@ import com.rapiflete.delivery.model.SavedQuoteRecord
 import com.rapiflete.delivery.model.StoreAndPricingConfig
 import com.rapiflete.delivery.model.SurchargeType
 import com.rapiflete.delivery.model.TransferBankType
+import com.rapiflete.delivery.model.calculateMixedPaymentSettlement
 import com.rapiflete.delivery.util.LocationParserAndFreezer
 import com.rapiflete.delivery.util.RoutingAndFareCalculator
 import org.junit.Assert.assertEquals
@@ -106,7 +107,7 @@ class DeliveryCalculatorAndParserTest {
         assertTrue(customerMsg.contains("📏 *Distancia:* 6.20 km"))
         assertTrue(!customerMsg.contains("Ruta Calles"))
         assertTrue(!customerMsg.contains("Tiempo est"))
-        assertTrue(customerMsg.contains("• Tarifa mínima envío (incluye 2.0 km): C$ 60"))
+        assertTrue(customerMsg.contains("• Tarifa base envío (incluye 2.0 km): C$ 60"))
         assertTrue(customerMsg.contains("• Tarifa de distancia (4.20 km × C$ 15/km): +C$ 63"))
         assertTrue(customerMsg.contains("💰 *TOTAL ENVÍO: C$ 135*"))
 
@@ -328,7 +329,7 @@ class DeliveryCalculatorAndParserTest {
             customerNote = "Cliente Ruta Lejana"
         )
 
-        assertTrue(customerMsg.contains("• Tarifa mínima envío (incluye 2.0 km): C$ 40"))
+        assertTrue(customerMsg.contains("• Tarifa base envío (incluye 2.0 km): C$ 40"))
         assertTrue(customerMsg.contains("• Tarifa de distancia (13.50 km × C$ 10/km): +C$ 135"))
         assertTrue(customerMsg.contains("• Descuento Tarifa Preferencial: -C$ 25"))
         assertTrue(customerMsg.contains("💰 *TOTAL ENVÍO: C$ 150*"))
@@ -669,5 +670,331 @@ class DeliveryCalculatorAndParserTest {
             isPaymentPendingOnDelivery = true
         )
         assertTrue(pendingTransferState.isPaymentPendingOnDelivery)
+    }
+
+    @Test
+    fun `calculateMixedPaymentSettlement mathematically solves Case A Case B and Case C with clamping`() {
+        // Case A: cash collected (400) > delivery fee (100)
+        val caseA = calculateMixedPaymentSettlement(productAmount = 500.0, deliveryFee = 100.0, partialTransferAmount = 200.0)
+        assertEquals(600.0, caseA.grandTotal, 0.001)
+        assertEquals(200.0, caseA.transferAmount, 0.001)
+        assertEquals(400.0, caseA.cashToCollect, 0.001)
+        assertEquals(100.0, caseA.driverRetainedFromCash, 0.001)
+        assertEquals(300.0, caseA.storeOwedByDriver, 0.001)
+        assertEquals(0.0, caseA.driverPendingFromStore, 0.001)
+        assertTrue(caseA.isDriverFullyPaidByCash)
+
+        // Case B: cash collected (100) == delivery fee (100)
+        val caseB = calculateMixedPaymentSettlement(productAmount = 500.0, deliveryFee = 100.0, partialTransferAmount = 500.0)
+        assertEquals(600.0, caseB.grandTotal, 0.001)
+        assertEquals(500.0, caseB.transferAmount, 0.001)
+        assertEquals(100.0, caseB.cashToCollect, 0.001)
+        assertEquals(100.0, caseB.driverRetainedFromCash, 0.001)
+        assertEquals(0.0, caseB.storeOwedByDriver, 0.001)
+        assertEquals(0.0, caseB.driverPendingFromStore, 0.001)
+        assertTrue(caseB.isDriverFullyPaidByCash)
+
+        // Case C: cash collected (40) < delivery fee (100)
+        val caseC = calculateMixedPaymentSettlement(productAmount = 500.0, deliveryFee = 100.0, partialTransferAmount = 560.0)
+        assertEquals(600.0, caseC.grandTotal, 0.001)
+        assertEquals(560.0, caseC.transferAmount, 0.001)
+        assertEquals(40.0, caseC.cashToCollect, 0.001)
+        assertEquals(40.0, caseC.driverRetainedFromCash, 0.001)
+        assertEquals(0.0, caseC.storeOwedByDriver, 0.001)
+        assertEquals(60.0, caseC.driverPendingFromStore, 0.001)
+        org.junit.Assert.assertFalse(caseC.isDriverFullyPaidByCash)
+
+        // Clamping: transfer > grandTotal
+        val clampedOver = calculateMixedPaymentSettlement(productAmount = 300.0, deliveryFee = 50.0, partialTransferAmount = 400.0)
+        assertEquals(350.0, clampedOver.transferAmount, 0.001)
+        assertEquals(0.0, clampedOver.cashToCollect, 0.001)
+        assertEquals(0.0, clampedOver.driverRetainedFromCash, 0.001)
+        assertEquals(0.0, clampedOver.storeOwedByDriver, 0.001)
+        assertEquals(50.0, clampedOver.driverPendingFromStore, 0.001)
+
+        // Clamping: negative transfer
+        val clampedNeg = calculateMixedPaymentSettlement(productAmount = 300.0, deliveryFee = 50.0, partialTransferAmount = -50.0)
+        assertEquals(0.0, clampedNeg.transferAmount, 0.001)
+        assertEquals(350.0, clampedNeg.cashToCollect, 0.001)
+    }
+
+    @Test
+    fun `saved quote record computed properties correctly handle mixed payment across Case A Case B and Case C`() {
+        val baseRecord = SavedQuoteRecord(
+            id = "test-mixed",
+            timestamp = "10:00",
+            customerNote = "Cliente Mixto",
+            paymentMethod = PaymentMethodType.MIXED,
+            productAmount = 500.0,
+            deliveryFee = 100.0,
+            totalAmount = 600.0
+        )
+
+        // Case A: transfer 200, cash 400 > fee 100
+        val recA = baseRecord.copy(partialTransferAmount = 200.0)
+        assertEquals(200.0, recA.effectiveTransferAmount, 0.001)
+        assertEquals(400.0, recA.effectiveCashToCollect, 0.001)
+        assertEquals(100.0, recA.driverCashRetained, 0.001)
+        assertEquals(0.0, recA.driverPendingFromStore, 0.001)
+        assertEquals(300.0, recA.storeCashOwedByDriver, 0.001)
+
+        // Case B: transfer 500, cash 100 == fee 100
+        val recB = baseRecord.copy(partialTransferAmount = 500.0)
+        assertEquals(500.0, recB.effectiveTransferAmount, 0.001)
+        assertEquals(100.0, recB.effectiveCashToCollect, 0.001)
+        assertEquals(100.0, recB.driverCashRetained, 0.001)
+        assertEquals(0.0, recB.driverPendingFromStore, 0.001)
+        assertEquals(0.0, recB.storeCashOwedByDriver, 0.001)
+
+        // Case C: transfer 560, cash 40 < fee 100
+        val recC = baseRecord.copy(partialTransferAmount = 560.0)
+        assertEquals(560.0, recC.effectiveTransferAmount, 0.001)
+        assertEquals(40.0, recC.effectiveCashToCollect, 0.001)
+        assertEquals(40.0, recC.driverCashRetained, 0.001)
+        assertEquals(60.0, recC.driverPendingFromStore, 0.001)
+        assertEquals(0.0, recC.storeCashOwedByDriver, 0.001)
+    }
+
+    @Test
+    fun `buildCustomerWhatsAppSummary formats mixed payment with template and fallback breakdown`() {
+        val config = StoreAndPricingConfig()
+        val dest = FrozenDestination(
+            coordinate = GeoCoordinate(12.145678, -86.265432),
+            label = "Managua Centro",
+            sourceRawText = "Managua Centro",
+            capturedAtTime = "10:00"
+        )
+        val route = RouteResult(
+            straightLineKm = 3.0,
+            adjustedStraightLineKm = 3.9,
+            osrmDrivingKm = 3.5,
+            osrmDurationMinutes = 10.0,
+            routeGeometry = listOf(config.storeCoordinate, dest.coordinate),
+            usedMode = DistanceCalculationMode.OSRM_DRIVING,
+            effectiveDistanceKm = 3.5
+        )
+        val quote = RoutingAndFareCalculator.calculateQuoteBreakdown(
+            route = route,
+            modeOverride = DistanceCalculationMode.OSRM_DRIVING,
+            config = config,
+            applyOffHours = false,
+            applyHoliday = false,
+            applyRainOrDemand = false
+        ).copy(customTotalOverride = 100.0) // delivery fee = 100
+
+        // 1. Template: isPaymentPendingOnDelivery = true
+        val msgPending = RoutingAndFareCalculator.buildCustomerWhatsAppSummary(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente Juan",
+            productAmount = 500.0,
+            paymentMethod = PaymentMethodType.MIXED,
+            transferBank = TransferBankType.BAC,
+            partialTransferAmount = 200.0,
+            isPaymentPendingOnDelivery = true
+        )
+        assertTrue(msgPending.contains("Pago Mixto / Parcial: Transferencia (BAC: C$ 200, *pendiente al recibir*) + Efectivo (C$ 400)"))
+        assertTrue(msgPending.contains("GRAN TOTAL: C$ 600"))
+        assertTrue(msgPending.contains("💳 *Abono por Transferencia (BAC):* -C$ 200"))
+        assertTrue(msgPending.contains("💵 *SALDO A PAGAR EN EFECTIVO AL RECIBIR:* C$ 400"))
+
+        // 2. Template: isPaymentPendingOnDelivery = false (acreditada)
+        val msgConfirmed = RoutingAndFareCalculator.buildCustomerWhatsAppSummary(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente Juan",
+            productAmount = 500.0,
+            paymentMethod = PaymentMethodType.MIXED,
+            transferBank = TransferBankType.BAC,
+            partialTransferAmount = 200.0,
+            isPaymentPendingOnDelivery = false
+        )
+        assertTrue(msgConfirmed.contains("Pago Mixto / Parcial: Transferencia (BAC: C$ 200, *acreditada*) + Efectivo al recibir (C$ 400)"))
+
+        // 3. Fallback (empty template)
+        val configBlank = config.copy(customerMessageTemplate = "")
+        val msgFallback = RoutingAndFareCalculator.buildCustomerWhatsAppSummary(
+            config = configBlank,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente Juan",
+            productAmount = 500.0,
+            paymentMethod = PaymentMethodType.MIXED,
+            transferBank = TransferBankType.BAC,
+            partialTransferAmount = 200.0,
+            isPaymentPendingOnDelivery = true
+        )
+        assertTrue(msgFallback.contains("💳 *Método de pago:* Pago Mixto / Parcial: Transferencia (BAC: C$ 200, *pendiente al recibir*) + Efectivo (C$ 400)"))
+        assertTrue(msgFallback.contains("💰 *GRAN TOTAL: C$ 600*"))
+        assertTrue(msgFallback.contains("💳 *Abono por Transferencia (BAC):* -C$ 200"))
+        assertTrue(msgFallback.contains("💵 *SALDO A PAGAR EN EFECTIVO AL RECIBIR:* C$ 400"))
+    }
+
+    @Test
+    fun `buildDriverSettlementNote accurately handles mixed payment Case A Case B and Case C`() {
+        // Case A: cash 400 > fee 100 -> store owed 300 (pending vs confirmed)
+        val noteCaseAPending = RoutingAndFareCalculator.buildDriverSettlementNote(
+            paymentMethod = PaymentMethodType.MIXED,
+            transferBank = TransferBankType.BAC,
+            productAmount = 500.0,
+            deliveryFee = 100.0,
+            currencySymbol = "C$",
+            isPaymentPendingOnDelivery = true,
+            partialTransferAmount = 200.0
+        )
+        assertEquals(
+            "🔄 Pago Mixto (BAC PENDIENTE (verificar comprobante): C$ 200 + Efectivo: C$ 400): Cobrar en efectivo C$ 400 al cliente. Te descuentas tu envío completo (C$ 100) y depositas a tienda el restante de C$ 300.",
+            noteCaseAPending
+        )
+
+        val noteCaseAConfirmed = RoutingAndFareCalculator.buildDriverSettlementNote(
+            paymentMethod = PaymentMethodType.MIXED,
+            transferBank = TransferBankType.BAC,
+            productAmount = 500.0,
+            deliveryFee = 100.0,
+            currencySymbol = "C$",
+            isPaymentPendingOnDelivery = false,
+            partialTransferAmount = 200.0
+        )
+        assertEquals(
+            "🔄 Pago Mixto (BAC ya acreditada: C$ 200 + Efectivo: C$ 400): Cobrar en efectivo C$ 400 al cliente. Te descuentas tu envío completo (C$ 100) y depositas a tienda el restante de C$ 300.",
+            noteCaseAConfirmed
+        )
+
+        // Case B: cash 100 == fee 100 -> store owed 0, pending from store 0
+        val noteCaseB = RoutingAndFareCalculator.buildDriverSettlementNote(
+            paymentMethod = PaymentMethodType.MIXED,
+            transferBank = TransferBankType.LAFISE,
+            productAmount = 500.0,
+            deliveryFee = 100.0,
+            currencySymbol = "C$",
+            isPaymentPendingOnDelivery = false,
+            partialTransferAmount = 500.0
+        )
+        assertEquals(
+            "🔄 Pago Mixto (Lafise ya acreditada: C$ 500 + Efectivo: C$ 100): Cobrar en efectivo C$ 100 al cliente. Te quedas con ese monto exacto para cubrir tu envío (C$ 100). Cuentas saldadas (Depositar a tienda: C$ 0).",
+            noteCaseB
+        )
+
+        // Case C: cash 40 < fee 100 -> driver pending from store 60
+        val noteCaseC = RoutingAndFareCalculator.buildDriverSettlementNote(
+            paymentMethod = PaymentMethodType.MIXED,
+            transferBank = TransferBankType.BANPRO,
+            productAmount = 500.0,
+            deliveryFee = 100.0,
+            currencySymbol = "C$",
+            isPaymentPendingOnDelivery = false,
+            partialTransferAmount = 560.0
+        )
+        assertEquals(
+            "🔄 Pago Mixto (Banpro ya acreditada: C$ 560 + Efectivo: C$ 40): Cobrar en efectivo C$ 40 al cliente y conservarlo como parte de tu envío. La tienda ColorShop te pagará el saldo restante de tu envío (C$ 60).",
+            noteCaseC
+        )
+    }
+
+    @Test
+    fun `buildDriverWhatsAppDispatch accurately handles mixed payment across Case A Case B and Case C and fallback`() {
+        val config = StoreAndPricingConfig()
+        val dest = FrozenDestination(
+            coordinate = GeoCoordinate(12.145678, -86.265432),
+            label = "Managua Centro",
+            sourceRawText = "Managua Centro",
+            capturedAtTime = "10:00"
+        )
+        val route = RouteResult(
+            straightLineKm = 3.0,
+            adjustedStraightLineKm = 3.9,
+            osrmDrivingKm = 3.5,
+            osrmDurationMinutes = 10.0,
+            routeGeometry = listOf(config.storeCoordinate, dest.coordinate),
+            usedMode = DistanceCalculationMode.OSRM_DRIVING,
+            effectiveDistanceKm = 3.5
+        )
+        val quote = RoutingAndFareCalculator.calculateQuoteBreakdown(
+            route = route,
+            modeOverride = DistanceCalculationMode.OSRM_DRIVING,
+            config = config,
+            applyOffHours = false,
+            applyHoliday = false,
+            applyRainOrDemand = false
+        ).copy(customTotalOverride = 100.0) // delivery fee = 100
+
+        // Case A: Transfer pending
+        val dispatchCaseAPending = RoutingAndFareCalculator.buildDriverWhatsAppDispatch(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente Mixto",
+            productAmount = 500.0,
+            paymentMethod = PaymentMethodType.MIXED,
+            transferBank = TransferBankType.BAC,
+            isPaymentPendingOnDelivery = true,
+            partialTransferAmount = 200.0
+        )
+        assertTrue(dispatchCaseAPending.contains("• Total a Cobrar: C$ 400 en Efectivo + Verificar Transf. BAC por C$ 200 (Total pedido: C$ 600)"))
+        assertTrue(dispatchCaseAPending.contains("• Método de Pago: Pago Mixto (Transf. BAC pendiente + Efectivo)"))
+        assertTrue(dispatchCaseAPending.contains("👉 *Liquidación:* Cobras C$ 400 en efectivo al cliente. Te descuentas tu envío completo (C$ 100) y depositas a tienda el restante: *C$ 300*."))
+
+        // Case A: Transfer confirmed
+        val dispatchCaseAConfirmed = RoutingAndFareCalculator.buildDriverWhatsAppDispatch(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente Mixto",
+            productAmount = 500.0,
+            paymentMethod = PaymentMethodType.MIXED,
+            transferBank = TransferBankType.BAC,
+            isPaymentPendingOnDelivery = false,
+            partialTransferAmount = 200.0
+        )
+        assertTrue(dispatchCaseAConfirmed.contains("• Total a Cobrar: C$ 400 EN EFECTIVO (Abonado por Transf. BAC: C$ 200 de C$ 600)"))
+        assertTrue(dispatchCaseAConfirmed.contains("• Método de Pago: Pago Mixto (Transf. BAC acreditada + Efectivo)"))
+        assertTrue(dispatchCaseAConfirmed.contains("👉 *Liquidación:* Cobras C$ 400 en efectivo al cliente. Te descuentas tu envío completo (C$ 100) y depositas a tienda el restante: *C$ 300*."))
+
+        // Case B: Cash == deliveryFee
+        val dispatchCaseB = RoutingAndFareCalculator.buildDriverWhatsAppDispatch(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente Mixto",
+            productAmount = 500.0,
+            paymentMethod = PaymentMethodType.MIXED,
+            transferBank = TransferBankType.LAFISE,
+            isPaymentPendingOnDelivery = false,
+            partialTransferAmount = 500.0
+        )
+        assertTrue(dispatchCaseB.contains("👉 *Liquidación:* Cobras C$ 100 en efectivo al cliente y te lo quedas para cubrir tu envío (C$ 100). No debes depositar efectivo a tienda (C$ 0)."))
+
+        // Case C: Cash < deliveryFee
+        val dispatchCaseC = RoutingAndFareCalculator.buildDriverWhatsAppDispatch(
+            config = config,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente Mixto",
+            productAmount = 500.0,
+            paymentMethod = PaymentMethodType.MIXED,
+            transferBank = TransferBankType.BANPRO,
+            isPaymentPendingOnDelivery = false,
+            partialTransferAmount = 560.0
+        )
+        assertTrue(dispatchCaseC.contains("👉 *Liquidación:* Cobras C$ 40 en efectivo al cliente como parte de tu envío (C$ 100). No depositas nada a tienda y ColorShop te pagará el saldo restante de tu envío: *C$ 60*."))
+
+        // Fallback (empty dispatch template)
+        val configBlank = config.copy(driverDispatchTemplate = "")
+        val dispatchFallback = RoutingAndFareCalculator.buildDriverWhatsAppDispatch(
+            config = configBlank,
+            destination = dest,
+            quote = quote,
+            customerNote = "Cliente Mixto",
+            productAmount = 500.0,
+            paymentMethod = PaymentMethodType.MIXED,
+            transferBank = TransferBankType.BAC,
+            isPaymentPendingOnDelivery = true,
+            partialTransferAmount = 200.0
+        )
+        assertTrue(dispatchFallback.contains("• *Cobro al Cliente:* C$ 400 en Efectivo + Verificar Transf. BAC por C$ 200 (Total pedido: C$ 600)"))
+        assertTrue(dispatchFallback.contains("👉 *Liquidación:* Cobras C$ 400 en efectivo al cliente. Te descuentas tu envío completo (C$ 100) y depositas a tienda el restante: *C$ 300*."))
     }
 }

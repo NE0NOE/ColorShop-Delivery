@@ -73,7 +73,45 @@ enum class ShareOutputFormat(val label: String, val shortLabel: String) {
 enum class PaymentMethodType(val label: String, val badgeLabel: String) {
     CASH("Efectivo", "Cobro Efectivo"),
     TRANSFER("Transferencia", "Transferencia Bancaria"),
-    POS("POS / Tarjeta", "Pagar por POS")
+    POS("POS / Tarjeta", "Pagar por POS"),
+    MIXED("Mixto / Parcial", "Pago Mixto")
+}
+
+data class MixedPaymentSettlement(
+    val grandTotal: Double,
+    val deliveryFee: Double,
+    val productAmount: Double,
+    val transferAmount: Double,
+    val cashToCollect: Double,
+    val driverRetainedFromCash: Double,
+    val storeOwedByDriver: Double,
+    val driverPendingFromStore: Double
+) {
+    val isDriverFullyPaidByCash: Boolean
+        get() = driverPendingFromStore <= 0.009
+}
+
+fun calculateMixedPaymentSettlement(
+    productAmount: Double,
+    deliveryFee: Double,
+    partialTransferAmount: Double
+): MixedPaymentSettlement {
+    val grandTotal = (productAmount.coerceAtLeast(0.0) + deliveryFee.coerceAtLeast(0.0)).coerceAtLeast(0.0)
+    val effectiveTransfer = partialTransferAmount.coerceIn(0.0, grandTotal)
+    val cashToCollect = (grandTotal - effectiveTransfer).coerceAtLeast(0.0)
+    val driverRetained = minOf(cashToCollect, deliveryFee.coerceAtLeast(0.0))
+    val storeOwedByDriver = (cashToCollect - driverRetained).coerceAtLeast(0.0)
+    val driverPendingFromStore = (deliveryFee.coerceAtLeast(0.0) - driverRetained).coerceAtLeast(0.0)
+    return MixedPaymentSettlement(
+        grandTotal = grandTotal,
+        deliveryFee = deliveryFee.coerceAtLeast(0.0),
+        productAmount = productAmount.coerceAtLeast(0.0),
+        transferAmount = effectiveTransfer,
+        cashToCollect = cashToCollect,
+        driverRetainedFromCash = driverRetained,
+        storeOwedByDriver = storeOwedByDriver,
+        driverPendingFromStore = driverPendingFromStore
+    )
 }
 
 enum class TransferBankType(val displayName: String) {
@@ -284,5 +322,47 @@ data class SavedQuoteRecord(
     val driverSettlementNote: String = "",
     val isDriverPaid: Boolean = false,
     val driverPaidAt: String = "",
-    val isPaymentPendingOnDelivery: Boolean = false
-)
+    val isPaymentPendingOnDelivery: Boolean = false,
+    val partialTransferAmount: Double = 0.0,
+    val partialCashAmount: Double = 0.0
+) {
+    val effectiveTransferAmount: Double
+        get() = when (paymentMethod) {
+            PaymentMethodType.MIXED -> partialTransferAmount.coerceIn(0.0, totalAmount.coerceAtLeast(0.0))
+            PaymentMethodType.TRANSFER, PaymentMethodType.POS -> totalAmount.coerceAtLeast(0.0)
+            PaymentMethodType.CASH -> 0.0
+        }
+
+    val effectiveCashToCollect: Double
+        get() = when (paymentMethod) {
+            PaymentMethodType.MIXED -> {
+                if (partialCashAmount > 0.0 && partialTransferAmount <= 0.0) {
+                    partialCashAmount.coerceIn(0.0, totalAmount.coerceAtLeast(0.0))
+                } else {
+                    (totalAmount.coerceAtLeast(0.0) - effectiveTransferAmount).coerceAtLeast(0.0)
+                }
+            }
+            PaymentMethodType.CASH -> totalAmount.coerceAtLeast(0.0)
+            PaymentMethodType.TRANSFER, PaymentMethodType.POS -> 0.0
+        }
+
+    val driverCashRetained: Double
+        get() = when (paymentMethod) {
+            PaymentMethodType.CASH, PaymentMethodType.MIXED -> minOf(effectiveCashToCollect, deliveryFee.coerceAtLeast(0.0))
+            PaymentMethodType.TRANSFER, PaymentMethodType.POS -> 0.0
+        }
+
+    val driverPendingFromStore: Double
+        get() = when (paymentMethod) {
+            PaymentMethodType.CASH -> 0.0
+            PaymentMethodType.TRANSFER, PaymentMethodType.POS -> deliveryFee.coerceAtLeast(0.0)
+            PaymentMethodType.MIXED -> (deliveryFee.coerceAtLeast(0.0) - driverCashRetained).coerceAtLeast(0.0)
+        }
+
+    val storeCashOwedByDriver: Double
+        get() = when (paymentMethod) {
+            PaymentMethodType.CASH -> productAmount.coerceAtLeast(0.0)
+            PaymentMethodType.TRANSFER, PaymentMethodType.POS -> 0.0
+            PaymentMethodType.MIXED -> (effectiveCashToCollect - driverCashRetained).coerceAtLeast(0.0)
+        }
+}

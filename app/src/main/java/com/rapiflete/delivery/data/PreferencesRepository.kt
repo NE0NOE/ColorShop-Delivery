@@ -271,7 +271,9 @@ class PreferencesRepository(context: Context) {
                         driverSettlementNote = obj.optString("driverSettlementNote", ""),
                         isDriverPaid = obj.optBoolean("isDriverPaid", runCatching { PaymentMethodType.valueOf(obj.optString("paymentMethod")) }.getOrDefault(PaymentMethodType.CASH) == PaymentMethodType.CASH),
                         driverPaidAt = obj.optString("driverPaidAt", ""),
-                        isPaymentPendingOnDelivery = obj.optBoolean("isPaymentPendingOnDelivery", false)
+                        isPaymentPendingOnDelivery = obj.optBoolean("isPaymentPendingOnDelivery", false),
+                        partialTransferAmount = obj.optDouble("partialTransferAmount", 0.0),
+                        partialCashAmount = obj.optDouble("partialCashAmount", 0.0)
                     )
                 )
             }
@@ -317,6 +319,8 @@ class PreferencesRepository(context: Context) {
                 put("isDriverPaid", record.isDriverPaid)
                 put("driverPaidAt", record.driverPaidAt)
                 put("isPaymentPendingOnDelivery", record.isPaymentPendingOnDelivery)
+                put("partialTransferAmount", record.partialTransferAmount)
+                put("partialCashAmount", record.partialCashAmount)
             }
             arr.put(obj)
         }

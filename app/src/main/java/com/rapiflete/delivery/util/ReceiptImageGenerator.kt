@@ -18,6 +18,7 @@ import com.rapiflete.delivery.model.QuoteBreakdown
 import com.rapiflete.delivery.model.SavedQuoteRecord
 import com.rapiflete.delivery.model.StoreAndPricingConfig
 import com.rapiflete.delivery.model.TransferBankType
+import com.rapiflete.delivery.model.calculateMixedPaymentSettlement
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -82,6 +83,7 @@ object ReceiptImageGenerator {
         productAmount: Double = 0.0,
         orderStatus: OrderStatus = OrderStatus.EN_RUTA,
         isPaymentPendingOnDelivery: Boolean = false,
+        partialTransferAmount: Double = 0.0,
         customTemplate: String = config.customerMessageTemplate,
         receiptNumber: String? = null
     ): Bitmap {
@@ -118,6 +120,7 @@ object ReceiptImageGenerator {
             currencySymbol = cur,
             scheduleInfo = RoutingAndFareCalculator.buildScheduleSummaryLine(config),
             isPaymentPendingOnDelivery = isPaymentPendingOnDelivery,
+            partialTransferAmount = partialTransferAmount,
             template = customTemplate
         )
     }
@@ -141,6 +144,7 @@ object ReceiptImageGenerator {
         productAmount: Double = 0.0,
         orderStatus: OrderStatus = OrderStatus.EN_RUTA,
         isPaymentPendingOnDelivery: Boolean = false,
+        partialTransferAmount: Double = 0.0,
         customTemplate: String = config.driverDispatchTemplate,
         dispatchNumber: String? = null
     ): Bitmap {
@@ -155,6 +159,16 @@ object ReceiptImageGenerator {
         )
 
         val cleanDest = cleanDestinationLabel(destination.label)
+        val mixed = calculateMixedPaymentSettlement(productAmount, deliveryFee, partialTransferAmount)
+
+        val isDriverPaid = paymentMethod == PaymentMethodType.CASH ||
+            (paymentMethod == PaymentMethodType.MIXED && mixed.isDriverFullyPaidByCash)
+
+        val driverPaidAt = when (paymentMethod) {
+            PaymentMethodType.CASH -> "Auto-descontado en efectivo"
+            PaymentMethodType.MIXED -> if (mixed.isDriverFullyPaidByCash) "Auto-descontado en efectivo" else ""
+            else -> ""
+        }
 
         return renderDriverDispatchBitmap(
             storeName = config.storeName,
@@ -175,9 +189,10 @@ object ReceiptImageGenerator {
             deliveryFee = deliveryFee,
             grandTotal = grandTotal,
             currencySymbol = cur,
-            isDriverPaid = paymentMethod == PaymentMethodType.CASH,
-            driverPaidAt = if (paymentMethod == PaymentMethodType.CASH) "Auto-descontado en efectivo" else "",
+            isDriverPaid = isDriverPaid,
+            driverPaidAt = driverPaidAt,
             isPaymentPendingOnDelivery = isPaymentPendingOnDelivery,
+            partialTransferAmount = partialTransferAmount,
             template = customTemplate
         )
     }
@@ -215,6 +230,7 @@ object ReceiptImageGenerator {
             currencySymbol = cur,
             scheduleInfo = RoutingAndFareCalculator.buildScheduleSummaryLine(config),
             isPaymentPendingOnDelivery = isPaymentPendingOnDelivery,
+            partialTransferAmount = record.effectiveTransferAmount,
             template = config.customerMessageTemplate
         )
     }
@@ -253,6 +269,7 @@ object ReceiptImageGenerator {
             isDriverPaid = record.isDriverPaid,
             driverPaidAt = record.driverPaidAt,
             isPaymentPendingOnDelivery = isPaymentPendingOnDelivery,
+            partialTransferAmount = record.effectiveTransferAmount,
             template = config.driverDispatchTemplate
         )
     }
@@ -265,19 +282,19 @@ object ReceiptImageGenerator {
         records: List<SavedQuoteRecord>,
         currencySymbol: String
     ): Bitmap {
-        val totalDeliveries = records.size
-        val cashRecords = records.filter { it.paymentMethod == PaymentMethodType.CASH }
-        val electronicRecords = records.filter { it.paymentMethod != PaymentMethodType.CASH }
+        val activeRecords = records.filter { it.orderStatus != OrderStatus.CANCELADO }
+        val totalDeliveries = activeRecords.size
+        val cashAndMixedRecords = activeRecords.filter { it.paymentMethod == PaymentMethodType.CASH || it.paymentMethod == PaymentMethodType.MIXED }
 
-        val totalCashCollected = cashRecords.sumOf { it.totalAmount }
-        val totalCashDriverDeducted = cashRecords.sumOf { it.deliveryFee }
-        val totalCashStoreOwed = cashRecords.sumOf { it.productAmount }
+        val totalCashDriverDeducted = activeRecords.sumOf { it.driverCashRetained }
+        val totalCashStoreOwed = activeRecords.sumOf { it.storeCashOwedByDriver }
 
-        val electronicPaid = electronicRecords.filter { it.isDriverPaid }
-        val electronicPending = electronicRecords.filter { !it.isDriverPaid }
+        val storeOwedToDriverRecords = activeRecords.filter { it.driverPendingFromStore > 0.009 }
+        val electronicPaid = storeOwedToDriverRecords.filter { it.isDriverPaid }
+        val electronicPending = storeOwedToDriverRecords.filter { !it.isDriverPaid }
 
-        val totalElectronicPaidToDriver = electronicPaid.sumOf { it.deliveryFee }
-        val totalElectronicPendingToDriver = electronicPending.sumOf { it.deliveryFee }
+        val totalElectronicPaidToDriver = electronicPaid.sumOf { it.driverPendingFromStore }
+        val totalElectronicPendingToDriver = electronicPending.sumOf { it.driverPendingFromStore }
 
         val height = 1500
         val bitmap = Bitmap.createBitmap(BITMAP_WIDTH, height, Bitmap.Config.ARGB_8888)
@@ -320,17 +337,17 @@ object ReceiptImageGenerator {
         paint.textSize = 26f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
         paint.color = COLOR_TEXT_MUTED
-        canvas.drawText("• Envíos en Efectivo (Auto-descontados por el motorizado):", 80f, y + 120f, paint)
+        canvas.drawText("• Envíos en Efectivo / Mixtos (Tarifa retenida por motorizado):", 80f, y + 120f, paint)
         paint.color = COLOR_TEXT_MAIN
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        canvas.drawText("${cashRecords.size} envíos • Tarifa ganada: $currencySymbol ${totalCashDriverDeducted.toInt()}", 80f, y + 160f, paint)
+        canvas.drawText("${cashAndMixedRecords.size} envíos • Tarifa retenida: $currencySymbol ${totalCashDriverDeducted.toInt()}", 80f, y + 160f, paint)
 
         paint.color = COLOR_TEXT_MUTED
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        canvas.drawText("• Envíos por Transferencia / POS (Pago a cargo de ColorShop):", 80f, y + 220f, paint)
+        canvas.drawText("• Envíos por Transferencia / POS / Mixto (A cargo de ColorShop):", 80f, y + 220f, paint)
         paint.color = COLOR_TEXT_MAIN
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        canvas.drawText("${electronicRecords.size} envíos • Pagado: $currencySymbol ${totalElectronicPaidToDriver.toInt()} • Pendiente: $currencySymbol ${totalElectronicPendingToDriver.toInt()}", 80f, y + 260f, paint)
+        canvas.drawText("${storeOwedToDriverRecords.size} envíos • Pagado: $currencySymbol ${totalElectronicPaidToDriver.toInt()} • Pendiente: $currencySymbol ${totalElectronicPendingToDriver.toInt()}", 80f, y + 260f, paint)
 
         y += 400f
 
@@ -361,9 +378,9 @@ object ReceiptImageGenerator {
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
         paint.color = COLOR_TEXT_MAIN
         val notePending = if (totalElectronicPendingToDriver > 0) {
-            "Corresponde a ${electronicPending.size} envíos de transferencias/POS aún no liquidados."
+            "Corresponde a ${electronicPending.size} envíos (Transf./POS/Mixtos) con saldo a favor pendiente."
         } else {
-            "Todos los envíos por transferencia/POS han sido pagados al motorizado."
+            "Todos los envíos a cargo de tienda han sido liquidados al motorizado."
         }
         canvas.drawText(notePending, 80f, y + 210f, paint)
 
@@ -382,7 +399,7 @@ object ReceiptImageGenerator {
         paint.color = COLOR_PRIMARY_DARK
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         paint.textSize = 28f
-        canvas.drawText("Depósito a Tienda por Mercadería (Efectivo cobrado):", 80f, y + 60f, paint)
+        canvas.drawText("Depósito a Tienda por Mercadería / Efectivo:", 80f, y + 60f, paint)
 
         paint.textSize = 50f
         paint.color = COLOR_PRIMARY
@@ -427,9 +444,12 @@ object ReceiptImageGenerator {
         currencySymbol: String,
         scheduleInfo: String,
         isPaymentPendingOnDelivery: Boolean = false,
+        partialTransferAmount: Double = 0.0,
         template: String = ""
     ): Bitmap {
         val checkTemplate = template.isNotBlank()
+        val isMixed = paymentMethod == PaymentMethodType.MIXED
+        val mixed = calculateMixedPaymentSettlement(productAmount, deliveryFee, partialTransferAmount)
 
         // Verificación de campos incluidos en la plantilla activa
         val showCustomer = !checkTemplate || template.contains("{cliente}", ignoreCase = true) || template.contains("Cliente", ignoreCase = true) || template.contains("Recibe", ignoreCase = true)
@@ -445,7 +465,7 @@ object ReceiptImageGenerator {
         val showDeliveryFee = !checkTemplate || template.contains("{tarifa_envio}", ignoreCase = true) || template.contains("Tarifa", ignoreCase = true) || template.contains("Envío", ignoreCase = true)
         val showTotal = !checkTemplate || template.contains("{total}", ignoreCase = true) || template.contains("TOTAL", ignoreCase = true)
 
-        val showPaymentMethod = !checkTemplate || template.contains("{metodo_pago}", ignoreCase = true) || template.contains("{banco}", ignoreCase = true) || template.contains("Pago", ignoreCase = true) || template.contains("Transferencia", ignoreCase = true) || template.contains("Efectivo", ignoreCase = true) || template.contains("POS", ignoreCase = true)
+        val showPaymentMethod = !checkTemplate || template.contains("{metodo_pago}", ignoreCase = true) || template.contains("{banco}", ignoreCase = true) || template.contains("Pago", ignoreCase = true) || template.contains("Transferencia", ignoreCase = true) || template.contains("Efectivo", ignoreCase = true) || template.contains("POS", ignoreCase = true) || template.contains("Mixto", ignoreCase = true)
         val showSchedule = (!checkTemplate || template.contains("{horarios_atencion}", ignoreCase = true) || template.contains("Horario", ignoreCase = true)) && scheduleInfo.isNotBlank()
 
         // Construir filas de Card 2
@@ -479,7 +499,7 @@ object ReceiptImageGenerator {
         }
 
         // Card 3 verificación
-        val hasFinanceRows = showMerchandise || showDeliveryFee
+        val hasFinanceRows = showMerchandise || showDeliveryFee || isMixed
         val hasFinanceCard = hasFinanceRows || showTotal
 
         // Precalcular altura dinámica total
@@ -492,6 +512,7 @@ object ReceiptImageGenerator {
             var rowsIn3 = 0
             if (showMerchandise) rowsIn3++
             if (showDeliveryFee) rowsIn3++
+            if (isMixed) rowsIn3 += 2
             val grandBoxH = if (showTotal) 155f else 0f
             val dividerH = if (rowsIn3 > 0 && showTotal) 20f else 0f
             val c3H = 65f + (rowsIn3 * 50f) + dividerH + grandBoxH + 15f
@@ -613,6 +634,7 @@ object ReceiptImageGenerator {
             var rowsIn3 = 0
             if (showMerchandise) rowsIn3++
             if (showDeliveryFee) rowsIn3++
+            if (isMixed) rowsIn3 += 2
             val grandBoxH = if (showTotal) 155f else 0f
             val dividerH = if (rowsIn3 > 0 && showTotal) 20f else 0f
             val card3Height = 65f + (rowsIn3 * 50f) + dividerH + grandBoxH + 15f
@@ -654,6 +676,26 @@ object ReceiptImageGenerator {
                 rY += 50f
             }
 
+            if (isMixed) {
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                paint.color = COLOR_TEXT_MUTED
+                paint.textSize = 26f
+                canvas.drawText("Total Pedido (Prod + Envío):", 80f, rY, paint)
+                paint.color = COLOR_TEXT_MAIN
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                canvas.drawText("$currencySymbol ${String.format(Locale.US, "%.2f", grandTotal)}", BITMAP_WIDTH - 280f, rY, paint)
+                rY += 50f
+
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                paint.color = COLOR_TEXT_MUTED
+                paint.textSize = 26f
+                canvas.drawText("Abono Transferencia ($transferBankName):", 80f, rY, paint)
+                paint.color = COLOR_BLUE
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                canvas.drawText("- $currencySymbol ${String.format(Locale.US, "%.2f", mixed.transferAmount)}", BITMAP_WIDTH - 280f, rY, paint)
+                rY += 50f
+            }
+
             if (rowsIn3 > 0 && showTotal) {
                 paint.strokeWidth = 2f
                 paint.color = COLOR_BORDER
@@ -669,11 +711,17 @@ object ReceiptImageGenerator {
                 paint.color = COLOR_PRIMARY_DARK
                 paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 paint.textSize = 30f
-                canvas.drawText("GRAN TOTAL A PAGAR:", 100f, rY + 75f, paint)
+                val totalBoxTitle = if (isMixed) "EFECTIVO A PAGAR AL RECIBIR:" else "GRAN TOTAL A PAGAR:"
+                canvas.drawText(totalBoxTitle, 100f, rY + 75f, paint)
 
                 paint.color = COLOR_PRIMARY
                 paint.textSize = 50f
-                canvas.drawText("$currencySymbol ${String.format(Locale.US, "%.2f", grandTotal)}", BITMAP_WIDTH - 390f, rY + 80f, paint)
+                val totalBoxAmount = if (isMixed) {
+                    "$currencySymbol ${String.format(Locale.US, "%.2f", mixed.cashToCollect)}"
+                } else {
+                    "$currencySymbol ${String.format(Locale.US, "%.2f", grandTotal)}"
+                }
+                canvas.drawText(totalBoxAmount, BITMAP_WIDTH - 390f, rY + 80f, paint)
             }
 
             y += card3Height + 25f
@@ -685,7 +733,8 @@ object ReceiptImageGenerator {
             val isCash = paymentMethod == PaymentMethodType.CASH
             val isPendingTransfer = paymentMethod == PaymentMethodType.TRANSFER && isPaymentPendingOnDelivery
             val isPendingPos = paymentMethod == PaymentMethodType.POS && isPaymentPendingOnDelivery
-            val isPendingElectronic = isPendingTransfer || isPendingPos
+            val isPendingMixed = paymentMethod == PaymentMethodType.MIXED && isPaymentPendingOnDelivery
+            val isPendingElectronic = isPendingTransfer || isPendingPos || isPendingMixed
 
             val boxBg = when {
                 isPendingElectronic -> COLOR_ORANGE_BG
@@ -726,6 +775,11 @@ object ReceiptImageGenerator {
                 } else {
                     "Forma de Pago: Datáfono / Tarjeta POS al recibir"
                 }
+                PaymentMethodType.MIXED -> if (isPaymentPendingOnDelivery) {
+                    "Forma de Pago: Mixto (Transf. $transferBankName + Efectivo)"
+                } else {
+                    "Forma de Pago: Pago Parcial / Mixto ($transferBankName + Efectivo)"
+                }
             }
             canvas.drawText(paymentMethodLabel, 80f, y + 55f, paint)
 
@@ -743,6 +797,7 @@ object ReceiptImageGenerator {
                 } else {
                     "✅ Pago con tarjeta procesado previamente"
                 }
+                PaymentMethodType.MIXED -> "💳 Transf: $currencySymbol ${mixed.transferAmount.toInt()}  •  💵 Efectivo al recibir: $currencySymbol ${mixed.cashToCollect.toInt()}"
             }
             canvas.drawText(customerStatusHeader, 80f, y + 105f, paint)
 
@@ -760,6 +815,11 @@ object ReceiptImageGenerator {
                     "💳 El repartidor llevará el datáfono para cobrar su tarjeta al momento de la entrega."
                 } else {
                     "El repartidor llevará su pedido con el pago verificado. ¡Muchas gracias por su preferencia!"
+                }
+                PaymentMethodType.MIXED -> if (isPaymentPendingOnDelivery) {
+                    "⏳ Transferir $currencySymbol ${mixed.transferAmount.toInt()} a $transferBankName y entregar $currencySymbol ${mixed.cashToCollect.toInt()} en efectivo al repartidor al recibir."
+                } else {
+                    "✅ Abono de $currencySymbol ${mixed.transferAmount.toInt()} acreditado ($transferBankName). Por favor entregar $currencySymbol ${mixed.cashToCollect.toInt()} en efectivo al repartidor."
                 }
             }
             if (customerAdvice.length > 70) {
@@ -814,9 +874,12 @@ object ReceiptImageGenerator {
         isDriverPaid: Boolean,
         driverPaidAt: String,
         isPaymentPendingOnDelivery: Boolean = false,
+        partialTransferAmount: Double = 0.0,
         template: String = ""
     ): Bitmap {
         val checkTemplate = template.isNotBlank()
+        val isMixed = paymentMethod == PaymentMethodType.MIXED
+        val mixed = calculateMixedPaymentSettlement(productAmount, deliveryFee, partialTransferAmount)
 
         val showCustomer = !checkTemplate || template.contains("{cliente}", ignoreCase = true) || template.contains("Cliente", ignoreCase = true) || template.contains("Recibe", ignoreCase = true)
         val showPhone = (!checkTemplate || template.contains("{telefono_cliente}", ignoreCase = true) || template.contains("Teléfono", ignoreCase = true)) && customerPhone.isNotBlank()
@@ -861,7 +924,7 @@ object ReceiptImageGenerator {
             clientItems.add(ReceiptItem("Notas:", cleanNotes, isPrimaryColor = true))
         }
 
-        val hasFinanceRows = showMerchandise || showDeliveryFee
+        val hasFinanceRows = showMerchandise || showDeliveryFee || isMixed
         val hasFinanceCard = hasFinanceRows || showTotal
 
         // Precalcular altura dinámica total
@@ -873,6 +936,7 @@ object ReceiptImageGenerator {
             var rowsIn3 = 0
             if (showMerchandise) rowsIn3++
             if (showDeliveryFee) rowsIn3++
+            if (isMixed) rowsIn3++
             val collectBoxH = if (showTotal) 155f else 0f
             val dividerH = if (rowsIn3 > 0 && showTotal) 20f else 0f
             estHeight += 65f + (rowsIn3 * 50f) + dividerH + collectBoxH + 40f
@@ -977,6 +1041,7 @@ object ReceiptImageGenerator {
             var rowsIn3 = 0
             if (showMerchandise) rowsIn3++
             if (showDeliveryFee) rowsIn3++
+            if (isMixed) rowsIn3++
             val collectBoxH = if (showTotal) 155f else 0f
             val dividerH = if (rowsIn3 > 0 && showTotal) 20f else 0f
             val card3Height = 65f + (rowsIn3 * 50f) + dividerH + collectBoxH + 15f
@@ -1018,6 +1083,17 @@ object ReceiptImageGenerator {
                 rY += 50f
             }
 
+            if (isMixed) {
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+                paint.color = COLOR_TEXT_MUTED
+                paint.textSize = 26f
+                canvas.drawText("Abono Transf. ($transferBankName):", 80f, rY, paint)
+                paint.color = COLOR_BLUE
+                paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                canvas.drawText("- $currencySymbol ${String.format(Locale.US, "%.2f", mixed.transferAmount)}", BITMAP_WIDTH - 280f, rY, paint)
+                rY += 50f
+            }
+
             if (rowsIn3 > 0 && showTotal) {
                 paint.strokeWidth = 2f
                 paint.color = COLOR_BORDER
@@ -1031,7 +1107,11 @@ object ReceiptImageGenerator {
                 val isPendingTransfer = paymentMethod == PaymentMethodType.TRANSFER && isPaymentPendingOnDelivery
                 val isPendingPos = paymentMethod == PaymentMethodType.POS && isPaymentPendingOnDelivery
                 val isPendingElectronic = isPendingTransfer || isPendingPos
-                val isCollectRequired = isCash || isPendingElectronic
+                val isCollectRequired = if (isMixed) {
+                    mixed.cashToCollect > 0.0 || isPaymentPendingOnDelivery
+                } else {
+                    isCash || isPendingElectronic
+                }
 
                 paint.color = if (isCollectRequired) COLOR_ORANGE_BG else COLOR_BLUE_BG
                 canvas.drawRoundRect(collectBox, 18f, 18f, paint)
@@ -1039,20 +1119,40 @@ object ReceiptImageGenerator {
                 paint.color = if (isCollectRequired) COLOR_ORANGE else COLOR_BLUE
                 paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 paint.textSize = 26f
-                val collectTitle = when {
-                    isCash -> "COBRAR AL CLIENTE (EFECTIVO):"
-                    isPendingTransfer -> "COBRAR / VERIFICAR TRANSFERENCIA:"
-                    isPendingPos -> "COBRAR CON DATÁFONO POS:"
-                    else -> "COBRO AL CLIENTE EN ENTREGA:"
+                val collectTitle = when (paymentMethod) {
+                    PaymentMethodType.MIXED -> if (isPaymentPendingOnDelivery) {
+                        "COBRAR EFECTIVO + VERIFICAR TRANSF.:"
+                    } else {
+                        "COBRAR AL CLIENTE (EFECTIVO RESTANTE):"
+                    }
+                    PaymentMethodType.CASH -> "COBRAR AL CLIENTE (EFECTIVO):"
+                    PaymentMethodType.TRANSFER -> if (isPaymentPendingOnDelivery) {
+                        "COBRAR / VERIFICAR TRANSFERENCIA:"
+                    } else {
+                        "COBRO AL CLIENTE EN ENTREGA:"
+                    }
+                    PaymentMethodType.POS -> if (isPaymentPendingOnDelivery) {
+                        "COBRAR CON DATÁFONO POS:"
+                    } else {
+                        "COBRO AL CLIENTE EN ENTREGA:"
+                    }
                 }
                 canvas.drawText(collectTitle, 95f, rY + 45f, paint)
 
                 paint.textSize = 46f
-                val collectAmountText = when {
-                    isCash -> "$currencySymbol ${grandTotal.toInt()}"
-                    isPendingTransfer -> "$currencySymbol ${grandTotal.toInt()}"
-                    isPendingPos -> "$currencySymbol ${grandTotal.toInt()}"
-                    else -> "$currencySymbol 0.00 (YA PAGADO)"
+                val collectAmountText = when (paymentMethod) {
+                    PaymentMethodType.MIXED -> "$currencySymbol ${mixed.cashToCollect.toInt()} EFECTIVO"
+                    PaymentMethodType.CASH -> "$currencySymbol ${grandTotal.toInt()}"
+                    PaymentMethodType.TRANSFER -> if (isPaymentPendingOnDelivery) {
+                        "$currencySymbol ${grandTotal.toInt()}"
+                    } else {
+                        "$currencySymbol 0.00 (YA PAGADO)"
+                    }
+                    PaymentMethodType.POS -> if (isPaymentPendingOnDelivery) {
+                        "$currencySymbol ${grandTotal.toInt()}"
+                    } else {
+                        "$currencySymbol 0.00 (YA PAGADO)"
+                    }
                 }
                 canvas.drawText(collectAmountText, 95f, rY + 105f, paint)
             }
@@ -1066,7 +1166,11 @@ object ReceiptImageGenerator {
             val isPendingTransfer = paymentMethod == PaymentMethodType.TRANSFER && isPaymentPendingOnDelivery
             val isPendingPos = paymentMethod == PaymentMethodType.POS && isPaymentPendingOnDelivery
             val isPendingElectronic = isPendingTransfer || isPendingPos
-            val isSettlementPaid = !isPendingElectronic && (isDriverPaid || paymentMethod == PaymentMethodType.CASH)
+            val isSettlementPaid = when (paymentMethod) {
+                PaymentMethodType.MIXED -> !isPaymentPendingOnDelivery && (isDriverPaid || mixed.isDriverFullyPaidByCash)
+                PaymentMethodType.CASH -> true
+                else -> !isPendingElectronic && isDriverPaid
+            }
 
             paint.color = if (isSettlementPaid) COLOR_GREEN_BG else COLOR_ORANGE_BG
             canvas.drawRoundRect(settlementCardRect, 24f, 24f, paint)
@@ -1091,22 +1195,47 @@ object ReceiptImageGenerator {
                 } else {
                     "Modalidad: Cobro con Datáfono / POS"
                 }
+                PaymentMethodType.MIXED -> "Modalidad: Pago Mixto (Transf. $currencySymbol${mixed.transferAmount.toInt()} + Efectivo $currencySymbol${mixed.cashToCollect.toInt()})"
             }
             canvas.drawText(paymentMethodLabel, 80f, y + 55f, paint)
 
             paint.textSize = 25f
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            val driverStatusHeader = if (paymentMethod == PaymentMethodType.CASH) {
-                "✅ PAGO MOTORIZADO: Te descuentas tu tarifa de envío ($currencySymbol ${deliveryFee.toInt()})"
-            } else if (isPaymentPendingOnDelivery && paymentMethod == PaymentMethodType.TRANSFER) {
-                "⏳ PAGO MOTORIZADO: Tienda te pagará ($currencySymbol ${deliveryFee.toInt()}) tras confirmarse"
-            } else if (isPaymentPendingOnDelivery && paymentMethod == PaymentMethodType.POS) {
-                "⏳ PAGO MOTORIZADO: Tienda te pagará ($currencySymbol ${deliveryFee.toInt()}) tras cobro POS"
-            } else if (isDriverPaid) {
-                val paidDetail = if (driverPaidAt.isNotBlank()) " (Liquidado: $driverPaidAt)" else ""
-                "✅ PAGO MOTORIZADO: Pagado por tienda$paidDetail"
-            } else {
-                "⏳ PAGO MOTORIZADO: Tienda te pagará ($currencySymbol ${deliveryFee.toInt()})"
+            val driverStatusHeader = when (paymentMethod) {
+                PaymentMethodType.MIXED -> {
+                    when {
+                        mixed.storeOwedByDriver > 0.009 -> {
+                            "✅ ENVÍO CUBIERTO ($currencySymbol ${deliveryFee.toInt()}) • DEPOSITAR A TIENDA: $currencySymbol ${mixed.storeOwedByDriver.toInt()}"
+                        }
+                        mixed.driverPendingFromStore <= 0.009 -> {
+                            "✅ ENVÍO CUBIERTO EN EFECTIVO ($currencySymbol ${deliveryFee.toInt()}) • SALDO TIENDA: $currencySymbol 0"
+                        }
+                        else -> {
+                            if (isDriverPaid) {
+                                "✅ ENVÍO LIQUIDADO: Cobraste $currencySymbol${mixed.cashToCollect.toInt()} + Tienda pagó $currencySymbol${mixed.driverPendingFromStore.toInt()}"
+                            } else {
+                                "⏳ RETIENES $currencySymbol ${mixed.cashToCollect.toInt()} EFECTIVO • TIENDA TE DEBE: $currencySymbol ${mixed.driverPendingFromStore.toInt()}"
+                            }
+                        }
+                    }
+                }
+                PaymentMethodType.CASH -> "✅ PAGO MOTORIZADO: Te descuentas tu tarifa de envío ($currencySymbol ${deliveryFee.toInt()})"
+                PaymentMethodType.TRANSFER -> if (isPaymentPendingOnDelivery) {
+                    "⏳ PAGO MOTORIZADO: Tienda te pagará ($currencySymbol ${deliveryFee.toInt()}) tras confirmarse"
+                } else if (isDriverPaid) {
+                    val paidDetail = if (driverPaidAt.isNotBlank()) " (Liquidado: $driverPaidAt)" else ""
+                    "✅ PAGO MOTORIZADO: Pagado por tienda$paidDetail"
+                } else {
+                    "⏳ PAGO MOTORIZADO: Tienda te pagará ($currencySymbol ${deliveryFee.toInt()})"
+                }
+                PaymentMethodType.POS -> if (isPaymentPendingOnDelivery) {
+                    "⏳ PAGO MOTORIZADO: Tienda te pagará ($currencySymbol ${deliveryFee.toInt()}) tras cobro POS"
+                } else if (isDriverPaid) {
+                    val paidDetail = if (driverPaidAt.isNotBlank()) " (Liquidado: $driverPaidAt)" else ""
+                    "✅ PAGO MOTORIZADO: Pagado por tienda$paidDetail"
+                } else {
+                    "⏳ PAGO MOTORIZADO: Tienda te pagará ($currencySymbol ${deliveryFee.toInt()})"
+                }
             }
             canvas.drawText(driverStatusHeader, 80f, y + 105f, paint)
 
@@ -1114,6 +1243,19 @@ object ReceiptImageGenerator {
             paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
             paint.color = COLOR_TEXT_MAIN
             val settlementAdvice = when (paymentMethod) {
+                PaymentMethodType.MIXED -> {
+                    when {
+                        mixed.storeOwedByDriver > 0.009 -> {
+                            "Cobras $currencySymbol ${mixed.cashToCollect.toInt()} en efectivo. Te descuentas tu envío ($currencySymbol ${deliveryFee.toInt()}) y depositas $currencySymbol ${mixed.storeOwedByDriver.toInt()} a tienda."
+                        }
+                        mixed.driverPendingFromStore <= 0.009 -> {
+                            "Cobras $currencySymbol ${mixed.cashToCollect.toInt()} en efectivo y te lo quedas por tu envío ($currencySymbol ${deliveryFee.toInt()}). No depositas nada a tienda."
+                        }
+                        else -> {
+                            "Cobras $currencySymbol ${mixed.cashToCollect.toInt()} en efectivo para tu envío. No depositas a tienda y ColorShop te pagará el resto ($currencySymbol ${mixed.driverPendingFromStore.toInt()})."
+                        }
+                    }
+                }
                 PaymentMethodType.CASH -> "Cobras $currencySymbol ${grandTotal.toInt()} al cliente. Te retienes $currencySymbol ${deliveryFee.toInt()} de tu envío y depositas $currencySymbol ${productAmount.toInt()} a tienda."
                 PaymentMethodType.TRANSFER -> if (isPaymentPendingOnDelivery) {
                     "El cliente transferirá $currencySymbol ${grandTotal.toInt()} a $transferBankName. Verificar comprobante o confirmación de tienda antes de entregar. Tienda te pagará tu envío ($currencySymbol ${deliveryFee.toInt()})."
